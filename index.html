@@ -281,6 +281,10 @@ details.acc .card { background: transparent; }
 .fab { box-shadow: 0 8px 22px rgb(61 42 32 / .28); }
 .tile, .bal, .card, .chart { box-shadow: 0 1px 0 rgb(61 42 32 / .04); }
 .loans { display: grid; gap: 10px; }
+.loan.pend { background: var(--warn-soft); }
+.pend-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid color-mix(in oklab, var(--warn) 20%, transparent); }
+.pend-txt { display: grid; min-width: 0; } .pend-txt span { font-size: 12.5px; color: var(--ink-2); }
+.pend-btns { display: flex; gap: 6px; }
 .pill.loan-pill { background: color-mix(in oklab, var(--s-ing) 16%, transparent); color: var(--ink); }
 .loan { background: var(--surface); border-radius: var(--r); padding: 14px; display: grid; gap: 8px; }
 .loan-amt { font-family: var(--display); font-weight: 700; font-size: 22px; }
@@ -876,10 +880,22 @@ body.locked .period { visibility: hidden; }
   }
 
   // Sección «Préstamos de tus ahorros»: cuánto debes, avance y plan de pago por moneda.
+  // Retiros de ahorros (Ingreso/«Gasto de Ahorros» o ahorro negativo) que no están marcados como préstamo
+  // y que todavía no clasificaste: la app pregunta una sola vez por cada uno.
+  const esRetiroAhorro = t => !t._sinGuardar && t.mes && ((t.tipo === 'Ingreso' && t.categoria === GASTO_AHORROS) || (t.tipo === 'Ahorros' && Number(t.monto) < 0));
+  const sinClasificar = () => S.all.filter(t => esRetiroAhorro(t) && !esPrestamo(t) && !(S.settings.retirosRevisados || []).includes(t.id)).sort((a, b) => b.fecha.localeCompare(a.fecha));
+  function retirosPendientes() {
+    const L = sinClasificar();
+    if (!L.length) return '';
+    return `<div class="loan pend"><b>${L.length} retiro${L.length > 1 ? 's' : ''} de tus ahorros sin clasificar</b><div class="note">¿Lo vas a devolver a tus ahorros? Si sí, es un préstamo y se suma a lo que les debes.</div>
+      ${L.map(t => `<div class="pend-row"><div class="pend-txt"><b class="num">${fmt(Math.abs(t.monto), t.moneda)} ${esc(t.moneda)}</b><span>${esc(dayLabel(t.fecha))}${t.detalle ? ' · ' + esc(t.detalle) : ''}</span></div>
+        <div class="pend-btns"><button type="button" class="chip" data-clasif="prestamo" data-id="${esc(t.id)}">Es préstamo</button><button type="button" class="chip" data-clasif="gasto" data-id="${esc(t.id)}">Lo gasté</button></div></div>`).join('')}</div>`;
+  }
+
   function seccionPrestamos(R) {
     const curs = CURS.filter(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005);
     const botones = c => `<div class="actions"><button type="button" class="btn" data-nuevo="prestamo" data-moneda="${c}">Tomar de mis ahorros</button><button type="button" class="btn primary" data-nuevo="devolucion" data-moneda="${c}">Devolver a mis ahorros</button></div>`;
-    if (!curs.length) return acc('prestamos', 'Préstamos de tus ahorros', 'Sin préstamos', `<div class="note" style="padding-inline:8px">Si sacas plata de tus ahorros para tener flujo y la vas a reponer, anótala como préstamo. Aquí verás cuánto le debes a tus ahorros y un plan para devolverlo.</div>${botones(S.cur)}`);
+    if (!curs.length) return (sinClasificar().length ? `<section class="block"><h2>Préstamos de tus ahorros</h2><div class="loans">${retirosPendientes()}</div></section>` : '') + acc('prestamos', 'Préstamos de tus ahorros', 'Sin préstamos', `<div class="note" style="padding-inline:8px">Si sacas plata de tus ahorros para tener flujo y la vas a reponer, anótala como préstamo. Aquí verás cuánto le debes a tus ahorros y un plan para devolverlo.</div>${botones(S.cur)}`);
     const plan = S.settings.planAhorros || {};
     const cards = curs.map(c => {
       const r = R[c], avance = r.tomadoAhorros > 0 ? Math.min(1, r.devueltoAhorros / r.tomadoAhorros) : 1;
@@ -897,7 +913,7 @@ body.locked .period { visibility: hidden; }
           <span class="plan-res">= <b class="num">${fmt(cuota, c)}</b> al mes, terminas en ${MONTHS[fin.getMonth()]} ${fin.getFullYear()}</span></div>` : ''}
         ${botones(c)}</div>`;
     }).join('');
-    return `<section class="block"><h2>Préstamos de tus ahorros</h2><div class="loans">${cards}</div></section>`;
+    return `<section class="block"><h2>Préstamos de tus ahorros</h2><div class="loans">${cards}${retirosPendientes()}</div></section>`;
   }
 
   // Resumen del mes: una barra por tipo en la misma escala, con valores completos, % del ingreso y
@@ -1010,12 +1026,12 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
-      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) ? seccionPrestamos(R) : ''}
+      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) || sinClasificar().length ? seccionPrestamos(R) : ''}
       ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
         <div class="card">${recent.map(txRow).join('')}</div></section>` : ''}
       <div class="accs">
       ${total ? acc('cifras', 'Cifras del resumen', 'COP y USD', tablaResumen) : ''}
-      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) ? '' : seccionPrestamos(R)}
+      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) || sinClasificar().length ? '' : seccionPrestamos(R)}
       ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
           ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
         </tbody></table></div><div class="note" style="padding-inline:8px">Promedio mensual en ${S.cur} de ${P.n === 1 ? MONTHS[+P.meses[0].slice(5) - 1] : `${MON3[+P.meses[0].slice(5) - 1].toLowerCase()} ${P.meses[0].slice(0, 4)} a ${MON3[+P.meses.at(-1).slice(5) - 1].toLowerCase()} ${P.meses.at(-1).slice(0, 4)}`} (${P.n} mes${P.n > 1 ? 'es' : ''} con gastos en ${S.cur}). ▲ gastaste más de lo normal, ▼ menos.${S.year === now.getFullYear() && S.month === now.getMonth() + 1 ? ` <b>${MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1)} todavía no termina</b> (día ${now.getDate()} de ${new Date(S.year, S.month, 0).getDate()}): lo normal es que aún vayas por debajo.` : ''}</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
@@ -1371,6 +1387,12 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (d.rmcat) {
       const next = structuredClone(S.settings); next.categorias[d.rmcat] = cats(d.rmcat).filter(c => c !== d.cat);
       saveSettings(next); toast(`Quitada: ${d.cat}. Tus movimientos anteriores no cambian.`); return;
+    }
+    if (d.clasif) {
+      const t = S.all.find(x => x.id === d.id); if (!t) return;
+      if (d.clasif === 'prestamo') { guardarMov({ ...t, prestamo: 'Préstamo' }); toast(`Marcado como préstamo: ${fmt(Math.abs(t.monto), t.moneda)}`); }
+      else { const next = structuredClone(S.settings); next.retirosRevisados = [...new Set([...(next.retirosRevisados || []), t.id])]; saveSettings(next); toast('Listo, no te vuelvo a preguntar por ese retiro'); }
+      return;
     }
     if (d.nuevo) { if (d.moneda) { S.cur = d.moneda; store.set('cur', S.cur); } openSheet(null, d.nuevo); return; }
     if (b.id === 'fab') { if (CONN && S.loaded) openSheet(); else toast('Primero conecta la app con tu hoja de Google.'); return; }
