@@ -476,7 +476,8 @@ body.locked .period { visibility: hidden; }
     cur: store.get('cur', 'USD'), tab: store.get('tab', 'mes'), showZeros: store.get('zeros', false),
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
-    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, open: store.get('open', {}), q: '', selMonth: null,
+    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, open: store.get('open', {}),
+    cola: store.get('cola', []), // movimientos que no se pudieron guardar en la hoja q: '', selMonth: null,
   };
 
   const $ = s => document.querySelector(s);
@@ -518,9 +519,9 @@ body.locked .period { visibility: hidden; }
   };
 
   let toastT;
-  function toast(msg) {
+  function toast(msg, ms = 2400) {
     let el = $('.toast'); if (!el) { el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role', 'status'); document.body.append(el); }
-    el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2400);
+    el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, ms);
   }
 
   /* ---------- datos ---------- */
@@ -579,7 +580,10 @@ body.locked .period { visibility: hidden; }
   }
   const withDerived = t => ({ ...t, monto: Number(t.monto), anio: Number(String(t.fecha).slice(0, 4)), mes: String(t.fecha).slice(0, 7) });
   function applyData(d) {
-    S.all = (d.movimientos || []).map(withDerived);
+    const enHoja = new Set((d.movimientos || []).map(t => t.id));
+    S.cola = (S.cola || []).filter(t => !enHoja.has(t.id)); store.set('cola', S.cola);
+    const colaIds = new Set(S.cola.map(t => t.id));
+    S.all = (d.movimientos || []).filter(t => !colaIds.has(t.id)).map(withDerived).concat(S.cola.map(t => withDerived({ ...t, _sinGuardar: true })));
     S.settings = mergeSettings(d.ajustes || {});
     if (d.categorias && Object.values(d.categorias).some(l => l.length)) S.settings.categorias = d.categorias;
     S.categorias = d.categorias || null;
@@ -605,13 +609,19 @@ body.locked .period { visibility: hidden; }
     writing = writing.then(() => api(accion, data)).then(() => {
       if (--pendientes === 0) { setSync('Al día'); store.set('cache', { movimientos: S.all, ajustes: S.settings, saldos: S.saldos, categorias: S.categorias }); }
     }, e => {
-      pendientes--; revertir?.(); render(); setSync('Sin conexión');
-      toast(msgError || 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.'); console.warn(e);
+      pendientes--; revertir?.(); render(); setSync(e.code === 'clave' ? 'Clave incorrecta' : 'Sin guardar');
+      toast((msgError || 'No se pudo guardar.') + (e.message && !/fetch|network|load/i.test(e.message) ? ` Motivo: ${e.message}` : ' Revisa tu conexión.'), 6000); console.warn(e);
     });
     return writing;
   }
   const nuevoId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
-  const limpiarMov = t => { const o = { ...t }; delete o.anio; delete o.mes; return o; };
+  const limpiarMov = t => { const o = { ...t }; delete o.anio; delete o.mes; delete o._sinGuardar; return o; };
+  async function reintentar() {
+    if (!S.cola.length) return;
+    setSync('Guardando…');
+    try { await api('guardarMovs', { movs: S.cola }); S.cola = []; store.set('cola', []); toast('Guardado en tu hoja'); await cargar(); }
+    catch (e) { setSync('Sin guardar'); toast('Todavía no se pudo guardar. Motivo: ' + (e.message || 'sin conexión'), 7000); }
+  }
   function saveSettings(next) {
     const prev = S.settings; S.settings = next; render();
     const { categorias, ...sinCategorias } = next;
@@ -628,9 +638,16 @@ body.locked .period { visibility: hidden; }
     const prev = S.all, i = S.all.findIndex(x => x.id === t.id);
     S.all = i >= 0 ? S.all.map(x => x.id === t.id ? withDerived(t) : x) : [...S.all, withDerived(t)];
     render();
-    return enviar('guardarMovs', { movs: [limpiarMov(t)] }, () => { S.all = prev; });
+    const limpio = limpiarMov(t);
+    S.cola = S.cola.filter(x => x.id !== t.id); store.set('cola', S.cola);
+    return enviar('guardarMovs', { movs: [limpio] }, () => {
+      // No se borra lo que escribiste: queda «Sin guardar» para reintentar.
+      S.cola = [...S.cola.filter(x => x.id !== t.id), limpio]; store.set('cola', S.cola);
+      S.all = S.all.map(x => x.id === t.id ? { ...x, _sinGuardar: true } : x);
+    }, 'No se guardó en tu hoja: quedó marcado «Sin guardar».');
   }
   function borrarMov(id) {
+    if (S.cola.some(x => x.id === id)) { S.cola = S.cola.filter(x => x.id !== id); store.set('cola', S.cola); S.all = S.all.filter(x => x.id !== id); render(); return Promise.resolve(); }
     const prev = S.all; S.all = S.all.filter(x => x.id !== id); render();
     return enviar('borrarMov', { id }, () => { S.all = prev; }, 'No se pudo eliminar. Revisa tu conexión.');
   }
@@ -651,7 +668,8 @@ body.locked .period { visibility: hidden; }
     const sub = [t.detalle, t.medio && t.medio !== 'NA' ? t.medio.replace('Tarjeta ', 'T. ') : ''].filter(Boolean).join(' · ');
     const pills = (impVal(t) === 'No' ? ' <span class="pill warn">Impuesto pendiente</span>' : '')
       + (isExtra(t, S.settings) ? ' <span class="pill">Extraordinario</span>' : '')
-      + (t.tipo === 'Deudas' && t.categoria === DEUDA_TC ? ' <span class="pill">Ya no se usa</span>' : '');
+      + (t.tipo === 'Deudas' && t.categoria === DEUDA_TC ? ' <span class="pill">Ya no se usa</span>' : '')
+      + (t._sinGuardar ? ' <span class="pill warn">Sin guardar</span>' : '');
     return `<button type="button" class="tx" data-edit="${esc(t.id)}">
       <span class="ic" style="background:${ty.color}">${ty.ab}</span>
       <span class="t"><b>${esc(first)}</b><span>${esc(sub || t.tipo)}${pills}</span></span>
@@ -818,6 +836,7 @@ body.locked .period { visibility: hidden; }
     return `<div class="heros" id="heros">${heroes}</div>
       <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
       ${total ? '' : `<div class="card" style="margin-top:12px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o desliza hacia la derecha para ver meses anteriores.</span></div></div>`}
+${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja sin fecha: no se están contando</span><span>Ponles fecha ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
@@ -881,7 +900,7 @@ body.locked .period { visibility: hidden; }
       const L = list.filter(t => t.moneda === c);
       return `<tr><td>${c}</td><td>${fmt(L.filter(moneyIn).reduce((a, t) => a + Math.abs(t.monto), 0), c)}</td><td>${fmt(L.filter(t => !moneyIn(t)).reduce((a, t) => a + Number(t.monto), 0), c)}</td></tr>`;
     }).join('');
-    return `<section class="block">
+    return `${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}<section class="block">
       ${S.fSin ? `<button type="button" class="chip" data-clearsin="1" aria-pressed="true">Sin fecha ✕</button>` : S.fCat ? `<button type="button" class="chip" data-clearcat="1" aria-pressed="true">${esc(S.fCat.key.split('|')[1])} ✕</button>` : `<input class="search" id="q" type="search" placeholder="Buscar: Glovo, Arriendo, Zara…" value="${esc(S.q)}" autocomplete="off">`}
       <div class="seg full" role="group" aria-label="Moneda">${[['all', 'Ambas'], ['COP', 'COP'], ['USD', 'USD']].map(([v, l]) => `<button type="button" data-fcur="${v}" aria-pressed="${S.fCur === v}">${l}</button>`).join('')}</div>
       <div class="chiprow" role="group" aria-label="Filtrar por tipo">
@@ -1123,6 +1142,7 @@ body.locked .period { visibility: hidden; }
     const b = e.target.closest('button, [data-month], tr[data-fcat]'); if (!b || b.closest('#sheetRoot')) return;
     const d = b.dataset;
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
+    if (d.reintentar) { reintentar(); return; }
     if (d.clearcat) { S.fCat = null; render(); return; }
     if (d.clearsin) { S.fSin = false; render(); return; }
     if (d.sinfecha) { S.fSin = true; S.fCat = null; S.fPend = false; S.fType = 'all'; S.fCur = 'all'; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
@@ -1278,7 +1298,7 @@ body.locked .period { visibility: hidden; }
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') { ocultaDesde = Date.now(); return; }
       if (store.get('pin', null) && !LOCK.locked && ocultaDesde && Date.now() - ocultaDesde > 60000) bloquear('abrir');
-      if (pendientes === 0) cargar();
+      if (pendientes === 0) (S.cola.length ? reintentar() : cargar());
     });
   } else { setSync('Sin conectar'); render(); }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});

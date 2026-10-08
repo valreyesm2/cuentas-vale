@@ -173,25 +173,39 @@ function guardarMovs_(movs) {
     const valores = [fecha, t.tipo, t.categoria, Number(t.monto) || 0, t.impuesto || 'No Aplica', t.medio || 'NA', t.moneda, t.detalle || ''];
     const extras = [t.reembolsaA || '', t.extra === true ? 'Si' : ''];
     const actual = porId[String(t.id)];
-    if (actual) {
-      // Si el monto no cambió, se deja la celda como está (conserva fórmulas como =66.07+1.98).
-      if (Math.abs((Number(actual.v[COL.monto - 1]) || 0) - valores[3]) < 0.005) {
-        h.getRange(actual.fila, 1, 1, 3).setValues([valores.slice(0, 3)]);
-        h.getRange(actual.fila, 5, 1, 4).setValues([valores.slice(4)]);
-      } else {
-        h.getRange(actual.fila, 1, 1, 8).setValues([valores]);
-      }
-      h.getRange(actual.fila, COL.reembolsaA, 1, 2).setValues([extras]);
-      ids.push(String(t.id));
-    } else {
-      const id = t.id && !porId[String(t.id)] ? String(t.id) : nuevoId_();
-      const fila = Math.max(h.getLastRow() + 1, PRIMERA_FILA);
-      h.getRange(fila, 1, 1, N_COLS).setValues([valores.concat([id]).concat(extras)]);
-      porId[id] = { fila, v: valores.concat([id]).concat(extras) };
-      ids.push(id);
-    }
+    const conservarMonto = actual && Math.abs((Number(actual.v[COL.monto - 1]) || 0) - valores[3]) < 0.005;
+    const fila = actual ? actual.fila : Math.max(h.getLastRow() + 1, PRIMERA_FILA);
+    const id = actual ? String(t.id) : (t.id && !porId[String(t.id)] ? String(t.id) : nuevoId_());
+    escribirFila_(h, fila, valores, id, extras, conservarMonto);
+    porId[id] = { fila, v: valores.concat([id]).concat(extras) };
+    ids.push(id);
   });
   return ids;
+}
+
+// Escribe una fila respetando la hoja: el TIPO va primero para que la lista desplegable de
+// CATEGORIA (pestaña DROPDOWN) se calcule antes de poner la categoría.
+function escribirFila_(h, fila, valores, id, extras, conservarMonto) {
+  h.getRange(fila, COL.fecha, 1, 2).setValues([valores.slice(0, 2)]);
+  if (!conservarMonto) h.getRange(fila, COL.monto).setValue(valores[3]); // si no cambió, se conserva la fórmula
+  h.getRange(fila, COL.impuesto, 1, 4).setValues([valores.slice(4, 8)]);
+  h.getRange(fila, COL.id, 1, 3).setValues([[id].concat(extras)]);
+  SpreadsheetApp.flush();
+  ponerCategoria_(h.getRange(fila, COL.categoria), valores[2]);
+}
+
+// Si la validación de la celda rechaza la categoría (la lista dependiente aún no se actualiza),
+// se quita la regla un momento, se escribe el valor y se vuelve a poner la misma regla.
+function ponerCategoria_(celda, valor) {
+  if (String(celda.getValue()) === String(valor)) return;
+  try {
+    celda.setValue(valor);
+  } catch (err) {
+    const regla = celda.getDataValidation();
+    celda.clearDataValidations();
+    celda.setValue(valor);
+    if (regla) celda.setDataValidation(regla);
+  }
 }
 
 function borrarMov_(id) {
