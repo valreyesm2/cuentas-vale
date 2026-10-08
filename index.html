@@ -11,7 +11,7 @@
 <meta name="apple-mobile-web-app-title" content="Cuentas">
 <meta name="robots" content="noindex, nofollow">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Cuentas de Vale</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -275,9 +275,12 @@ details.acc .card { background: transparent; }
 .fab { box-shadow: 0 8px 22px rgb(61 42 32 / .28); }
 .tile, .bal, .card, .chart { box-shadow: 0 1px 0 rgb(61 42 32 / .04); }
 body.locked .fab, body.locked nav.tabs { display: none; }
+body.locked .period { visibility: hidden; }
 .lock { display: grid; justify-items: center; gap: 12px; text-align: center; padding-block: 48px 24px; max-width: 340px; margin: 0 auto; }
 .lock h2 { font-size: 22px; }
-.lock-ic { color: var(--accent); }
+.lock-logo { border-radius: 50%; box-shadow: 0 8px 24px rgb(61 42 32 / .18); }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand .logo { border-radius: 50%; box-shadow: 0 2px 8px rgb(61 42 32 / .15); }
 .pin { width: 200px; text-align: center; font-size: 34px; letter-spacing: .6em; padding: 12px 0 12px .6em; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-variant-numeric: tabular-nums; }
 .pin:focus-visible { outline: 2px solid var(--accent); }
 </style>
@@ -287,7 +290,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
 <div class="app" id="app">
   <header class="top">
     <div class="row between">
-      <div class="brand">Cuentas de Vale</div>
+      <div class="brand"><img class="logo" src="logo.png" alt="" width="34" height="34">Cuentas de Vale</div>
       <div class="sub" id="syncState">Conectando…</div>
     </div>
     <div class="row between">
@@ -555,7 +558,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
   function viewPin() {
     const titulo = LOCK.mode === 'crear' ? 'Crea un PIN de 4 dígitos' : LOCK.mode === 'confirmar' ? 'Repite tu PIN' : 'Escribe tu PIN';
     const nota = LOCK.mode === 'abrir' ? 'Tus cuentas están bloqueadas en este dispositivo.' : 'Se pedirá cada vez que abras la app en este dispositivo. No se guarda en ningún otro lado.';
-    return `<section class="lock"><svg class="lock-ic" aria-hidden="true" viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg><h2>${titulo}</h2><div class="note">${nota}</div>
+    return `<section class="lock"><img class="lock-logo" src="logo.png" alt="Logo VR" width="112" height="112"><h2>${titulo}</h2><div class="note">${nota}</div>
       <input id="pinIn" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="${titulo}">
       <div class="err" role="alert">${esc(LOCK.msg)}</div>
       ${LOCK.mode === 'abrir' ? '<button type="button" class="chip" id="olvidePin">Olvidé mi PIN</button>' : ''}</section>`;
@@ -931,7 +934,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
   }
 
   function viewConectar() {
-    return `<section class="block"><h2>Conecta tu hoja de Google</h2>
+    return `<section class="block"><img class="lock-logo" src="logo.png" alt="Logo VR" width="112" height="112" style="justify-self:center"><h2>Conecta tu hoja de Google</h2>
       ${store.get('aviso', null) ? `<div class="notice warn">${esc(store.get('aviso', ''))}</div>` : ''}
       <div class="note">Esto se hace una sola vez en cada dispositivo. La dirección y la clave quedan guardadas solo aquí.</div>
       <form class="card" id="connForm" style="padding:14px;display:grid;gap:12px">
