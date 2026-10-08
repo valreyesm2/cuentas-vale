@@ -450,17 +450,24 @@ body.locked .period { visibility: hidden; }
     r.debesAhorros = prestamosAhorros(all, cur, fin).deuda;
     return r;
   }
-  // Promedio mensual por categoría de gasto en los meses anteriores (hasta 6) que tienen movimientos en esa moneda.
+  // Promedio mensual por categoría de gasto: los últimos meses anteriores (hasta 6) que tienen GASTOS
+  // en esa moneda. Un mes sin gastos (por ejemplo, solo un aporte a ahorros) no cuenta, para no
+  // dividir entre meses vacíos. Una categoría sin gasto en un mes contado suma 0 ese mes.
   function promedios(all, y, m, cur, cfg) {
-    const meses = [];
-    for (let i = 1; meses.length < 6 && i <= 24; i++) {
+    const meses = [], claves = [];
+    const esGasto = k => GASTO.has(k.split('|')[0]) && !k.endsWith('|' + PAGO_TC);
+    for (let i = 1; meses.length < 6 && i <= 36; i++) {
       const d = new Date(y, m - 1 - i, 1), k = ymOf(d.getFullYear(), d.getMonth() + 1);
       const L = all.filter(t => t.mes === k && t.moneda === cur);
-      if (L.length) meses.push(totales(L, cfg));
+      if (!L.length) continue;
+      const r = totales(L, cfg);
+      if (!Object.entries(r.porCat).some(([c, v]) => esGasto(c) && Math.abs(v) > 0.005)) continue;
+      meses.push(r); claves.push(k);
     }
     const prom = {};
-    for (const r of meses) for (const [k, v] of Object.entries(r.porCat)) if (GASTO.has(k.split('|')[0]) && !k.endsWith('|' + PAGO_TC)) prom[k] = (prom[k] || 0) + v / meses.length;
-    return { prom, n: meses.length };
+    for (const r of meses) for (const [k, v] of Object.entries(r.porCat)) if (esGasto(k)) prom[k] = (prom[k] || 0) + v;
+    for (const k of Object.keys(prom)) prom[k] /= meses.length;
+    return { prom, n: meses.length, meses: claves.reverse() };
   }
 
   const TYPES = [
@@ -907,7 +914,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) ? '' : seccionPrestamos(R)}
       ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
           ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
-        </tbody></table></div><div class="note" style="padding-inline:8px">En ${S.cur}, contra tus últimos ${P.n} mes${P.n > 1 ? 'es' : ''}. ▲ gastaste más de lo normal, ▼ menos.</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
+        </tbody></table></div><div class="note" style="padding-inline:8px">Promedio mensual en ${S.cur} de ${P.n === 1 ? MONTHS[+P.meses[0].slice(5) - 1] : `${MON3[+P.meses[0].slice(5) - 1].toLowerCase()} ${P.meses[0].slice(0, 4)} a ${MON3[+P.meses.at(-1).slice(5) - 1].toLowerCase()} ${P.meses.at(-1).slice(0, 4)}`} (${P.n} mes${P.n > 1 ? 'es' : ''} con gastos en ${S.cur}). ▲ gastaste más de lo normal, ▼ menos.${S.year === now.getFullYear() && S.month === now.getMonth() + 1 ? ` <b>${MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1)} todavía no termina</b> (día ${now.getDate()} de ${new Date(S.year, S.month, 0).getDate()}): lo normal es que aún vayas por debajo.` : ''}</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
       ${acc('resumen', 'Resumen en COP y USD', '', `<div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
           <tr class="strong"><td>Balance del mes</td>${CURS.map(c => cell(R[c].balance, c, true)).join('')}</tr>
           <tr class="total"><td>Disponible<small>Lo que traes + balance del mes</small></td>${CURS.map(c => cell(R[c].disponible, c, true)).join('')}</tr>
