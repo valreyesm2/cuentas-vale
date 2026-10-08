@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#17583f">
+<meta name="theme-color" content="#f6eee6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#17110e" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -22,23 +23,29 @@ body { margin: 0; }
 img { max-width: 100%; }
 [hidden] { display: none !important; }
 /* Layout: one-screen phone app — sticky period header, scrolling ledger body, fixed tab bar + floating add button */
+/* Layout: app de una columna para el celular — tarjeta principal deslizable (COP/USD), secciones plegables, barra de pestañas fija. Paleta nude y café; gráficas en verde azulado, coral, ciruela, mostaza y azul (validadas para daltonismo). */
 :root {
-  --bg: #f1f3ef; --surface: #ffffff; --surface-2: #e7ebe5; --ink: #141a17; --ink-2: #4b5550; --muted: #77817b; --line: #d9ded7;
-  --accent: #17583f; --accent-ink: #ffffff; --accent-soft: #dcebe2;
-  --pos: #0e7a4f; --neg: #b93437; --warn: #8a5300; --warn-soft: #fbeccf; --seq: #2a78d6;
-  --s-ing: #008300; --s-fijos: #2a78d6; --s-var: #eb6834; --s-aho: #1baf7a; --s-deu: #eda100;
+  --bg: #f6eee6; --surface: #fffbf7; --surface-2: #efe3d7; --ink: #2a1d16; --ink-2: #5c4a3f; --muted: #8b776a; --line: #e6d8cb;
+  --accent: #6b432e; --accent-ink: #fff8f1; --accent-soft: #efdfd1;
+  --hero-a: #8a5a3f; --hero-b: #3d2a20; --hero-ink: #fcf1e7; --hero-mut: #e6cfbd; --hero-line: rgb(255 240 225 / .18);
+  --pos: #2f7a55; --neg: #b23a32; --warn: #8a5300; --warn-soft: #f7e6c8; --seq: #008f7a; --other: #b3a194;
+  --s-ing: #008f7a; --s-fijos: #e0613d; --s-var: #8d4fa3; --s-aho: #b97f00; --s-deu: #2f7fc4;
   --display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", system-ui, sans-serif;
   --body: "Figtree", "Avenir Next", "Segoe UI", system-ui, sans-serif;
-  --r: 14px;
+  --r: 16px;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0e1210; --surface: #171c19; --surface-2: #212823; --ink: #edf1ec; --ink-2: #b4bcb6; --muted: #858f88; --line: #2a322d;
-  --accent: #5fc79a; --accent-ink: #0e1210; --accent-soft: #1d3329; --pos: #5fc79a; --neg: #f07b78; --warn: #f2b65a; --warn-soft: #3a2c12; --seq: #3987e5;
-  --s-ing: #3aa53a; --s-fijos: #3987e5; --s-var: #d95926; --s-aho: #199e70; --s-deu: #c98500; color-scheme: dark; } }
+  --bg: #17110e; --surface: #241b16; --surface-2: #2f241e; --ink: #f4e9df; --ink-2: #d0bdb0; --muted: #9c8a7d; --line: #3b2e26;
+  --accent: #d9a67c; --accent-ink: #1d1410; --accent-soft: #3a2a20;
+  --hero-a: #6a4430; --hero-b: #2a1d16; --hero-ink: #fbefe4; --hero-mut: #d6bfad; --hero-line: rgb(255 240 225 / .14);
+  --pos: #6cc196; --neg: #f08a7e; --warn: #f2b65a; --warn-soft: #3a2c12; --seq: #1a9d90; --other: #6e5e53;
+  --s-ing: #1a9d90; --s-fijos: #e06a44; --s-var: #a46aba; --s-aho: #b8861a; --s-deu: #478dcd; color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg: #0e1210; --surface: #171c19; --surface-2: #212823; --ink: #edf1ec; --ink-2: #b4bcb6; --muted: #858f88; --line: #2a322d;
-  --accent: #5fc79a; --accent-ink: #0e1210; --accent-soft: #1d3329; --pos: #5fc79a; --neg: #f07b78; --warn: #f2b65a; --warn-soft: #3a2c12; --seq: #3987e5;
-  --s-ing: #3aa53a; --s-fijos: #3987e5; --s-var: #d95926; --s-aho: #199e70; --s-deu: #c98500; color-scheme: dark; }
+  --bg: #17110e; --surface: #241b16; --surface-2: #2f241e; --ink: #f4e9df; --ink-2: #d0bdb0; --muted: #9c8a7d; --line: #3b2e26;
+  --accent: #d9a67c; --accent-ink: #1d1410; --accent-soft: #3a2a20;
+  --hero-a: #6a4430; --hero-b: #2a1d16; --hero-ink: #fbefe4; --hero-mut: #d6bfad; --hero-line: rgb(255 240 225 / .14);
+  --pos: #6cc196; --neg: #f08a7e; --warn: #f2b65a; --warn-soft: #3a2c12; --seq: #1a9d90; --other: #6e5e53;
+  --s-ing: #1a9d90; --s-fijos: #e06a44; --s-var: #a46aba; --s-aho: #b8861a; --s-deu: #478dcd; color-scheme: dark; }
 
 html, body { height: 100%; }
 body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; -webkit-tap-highlight-color: transparent; }
@@ -209,6 +216,64 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 .sw-line { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .readout.card { padding: 10px 14px; }
 input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90px; font-size: 13.5px; }
+
+/* tarjeta principal */
+.heros { display: grid; grid-auto-flow: column; grid-auto-columns: 88%; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; margin-inline: -16px; padding-inline: 16px; scroll-padding-inline: 16px; scrollbar-width: none; padding-block: 4px; }
+.heros::-webkit-scrollbar { display: none; }
+.hero-card { scroll-snap-align: start; position: relative; overflow: hidden; border-radius: 22px; padding: 18px 18px 16px; color: var(--hero-ink); background: radial-gradient(120% 90% at 100% 0%, rgb(255 220 190 / .22), transparent 55%), linear-gradient(140deg, var(--hero-a), var(--hero-b)); box-shadow: 0 10px 28px rgb(61 42 32 / .22); display: grid; gap: 10px; min-width: 0; }
+.hero-card .top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.hero-card .cur { font-weight: 700; font-size: 12px; letter-spacing: .12em; padding: 4px 10px; border-radius: 8px; background: var(--hero-line); }
+.hero-card .lbl { font-size: 13px; color: var(--hero-mut); }
+.hero-card .amt { font-family: var(--display); font-weight: 700; font-size: clamp(32px, 9.5vw, 44px); letter-spacing: -0.02em; line-height: 1; overflow-wrap: anywhere; }
+.hero-card .amt.neg { color: #ffb4a6; }
+.hero-card .split { font-size: 13px; color: var(--hero-mut); }
+.hero-card .split b { color: var(--hero-ink); font-weight: 600; }
+.meter { height: 8px; border-radius: 6px; background: var(--hero-line); overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, #f2c49b, #ffe3c9); transform-origin: left; }
+.meter.over i { background: linear-gradient(90deg, #ff9b85, #ffc2b5); }
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; border-top: 1px solid var(--hero-line); padding-top: 10px; }
+.trio div { display: grid; gap: 1px; min-width: 0; }
+.trio span { font-size: 11.5px; color: var(--hero-mut); }
+.trio b { font-size: 14px; font-weight: 700; overflow-wrap: anywhere; }
+.dots { display: flex; justify-content: center; gap: 6px; padding-top: 8px; }
+.dots button { width: 7px; height: 7px; padding: 0; border-radius: 50%; border: 0; background: var(--line); }
+.dots button[aria-current="true"] { width: 20px; border-radius: 4px; background: var(--accent); }
+/* dona */
+.donut-wrap { display: grid; grid-template-columns: 1fr; justify-items: center; gap: 10px; background: var(--surface); border-radius: var(--r); padding: 14px; }
+@media (min-width: 520px) { .donut-wrap { grid-template-columns: 160px 1fr; align-items: center; } }
+.donut { width: 150px; height: 150px; }
+.donut text { fill: var(--ink); font-family: var(--display); }
+.legend-list { display: grid; gap: 2px; min-width: 0; width: 100%; }
+.legend-list button { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; border: 0; background: none; padding: 6px 4px; border-radius: 8px; text-align: left; min-width: 0; }
+.legend-list button:hover { background: var(--surface-2); }
+.legend-list .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
+.legend-list .v { font-size: 13px; font-weight: 600; text-align: right; }
+.legend-list .v small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+/* plegables */
+details.acc { background: var(--surface); border-radius: var(--r); }
+details.acc > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px; font-family: var(--display); font-weight: 500; font-size: 16px; }
+details.acc > summary::-webkit-details-marker { display: none; }
+details.acc > summary .sum { font-family: var(--body); font-size: 12.5px; color: var(--muted); font-weight: 500; margin-left: auto; text-align: right; }
+details.acc > summary svg { flex: none; width: 18px; height: 18px; color: var(--muted); transition: transform .2s; }
+details.acc[open] > summary svg { transform: rotate(180deg); }
+details.acc > .acc-body { padding: 0 6px 10px; display: grid; gap: 14px; }
+details.acc .block { margin-block: 0; }
+details.acc .card { background: transparent; }
+.accs { display: grid; gap: 10px; margin-block: 22px; }
+/* movimiento */
+.enter .block, .enter .heros, .enter .accs { animation: rise .45s cubic-bezier(.2,.7,.2,1) both; }
+.enter .block:nth-of-type(2) { animation-delay: .04s; } .enter .block:nth-of-type(3) { animation-delay: .08s; } .enter .block:nth-of-type(4) { animation-delay: .12s; }
+.enter .meter i, .enter .bar i { animation: grow .8s cubic-bezier(.2,.7,.2,1) both; }
+.enter .donut { animation: pop .6s cubic-bezier(.2,.7,.2,1) both; }
+.enter .chart svg g rect, .enter .chart svg g line { animation: riseY .7s cubic-bezier(.2,.7,.2,1) both; transform-box: fill-box; transform-origin: bottom; }
+@keyframes rise { from { transform: translateY(10px); opacity: .35; } }
+@keyframes grow { from { transform: scaleX(0); } }
+@keyframes pop { from { transform: scale(.9) rotate(-20deg); opacity: .4; } }
+@keyframes riseY { from { transform: scaleY(0); } }
+@media (prefers-reduced-motion: reduce) { .enter *, .enter { animation: none !important; } details.acc > summary svg { transition: none; } }
+.tx .ic { color: #fff; }
+.fab { box-shadow: 0 8px 22px rgb(61 42 32 / .28); }
+.tile, .bal, .card, .chart { box-shadow: 0 1px 0 rgb(61 42 32 / .04); }
 body.locked .fab, body.locked nav.tabs { display: none; }
 .lock { display: grid; justify-items: center; gap: 12px; text-align: center; padding-block: 48px 24px; max-width: 340px; margin: 0 auto; }
 .lock h2 { font-size: 22px; }
@@ -317,12 +382,12 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     const anclas = Object.keys(saldos || {}).filter(k => k < mesKey && Number.isFinite(saldos[k]?.[cur])).sort();
     const ancla = anclas.at(-1);
     const base = ancla ? saldos[ancla][cur] : (Number(cfg?.debito?.[cur]?.inicial) || 0);
-    const L = all.filter(t => t.moneda === cur && t.mes <= mesKey && (!ancla || t.mes > ancla));
+    const L = all.filter(t => t.moneda === cur && t.mes && t.mes <= mesKey && (!ancla || t.mes > ancla));
     return base + flujoDebito(L, cur, cfg);
   }
   // Saldo pendiente en la tarjeta de crédito al cierre de un mes: compras con TC − pagos a TC acumulados.
   function saldoTC(all, cur, mesKey, cfg) {
-    const L = all.filter(t => t.moneda === cur && t.mes <= mesKey);
+    const L = all.filter(t => t.moneda === cur && t.mes && t.mes <= mesKey);
     return (Number(cfg?.tcInicial?.[cur]) || 0) + sumIf(L, isCompraTC) - sumIf(L, t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC);
   }
 
@@ -334,6 +399,13 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     r.cupoDisponible = r.cupo ? r.cupo - r.saldoTC : null;
     r.debito = saldoDebito(all, cur, k, cfg, saldos);
     r.debitoReal = saldos?.[k]?.[cur];
+    // Lo que quedó en la cuenta débito al cerrar el mes anterior: el saldo real si lo anotaste, si no el calculado.
+    const ant = new Date(y, m - 2, 1), ka = ymOf(ant.getFullYear(), ant.getMonth() + 1);
+    const realAnt = saldos?.[ka]?.[cur];
+    r.saldoAnterior = Number.isFinite(realAnt) ? realAnt : saldoDebito(all, cur, ka, cfg, saldos);
+    r.saldoAnteriorReal = Number.isFinite(realAnt);
+    r.traes = cfg?.traerSaldo?.[cur] === false ? 0 : r.saldoAnterior;
+    r.disponible = r.traes + r.balance;
     return r;
   }
   function anual(all, y, cur, cfg, saldos) {
@@ -380,6 +452,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     tcInicial: { COP: 0, USD: 0 },
     debito: { COP: { inicial: 0, restaAhorros: true }, USD: { inicial: 1123.25, restaAhorros: false } },
     extraCats: ['Viajes', 'Matrícula de la Universidad'],
+    traerSaldo: { COP: true, USD: true },
   };
   const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const MON3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -395,7 +468,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     cur: store.get('cur', 'USD'), tab: store.get('tab', 'mes'), showZeros: store.get('zeros', false),
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
-    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, q: '', selMonth: null,
+    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, open: store.get('open', {}), q: '', selMonth: null,
   };
 
   const $ = s => document.querySelector(s);
@@ -609,11 +682,13 @@ body.locked .fab, body.locked nav.tabs { display: none; }
   const sel = i => S.selMonth === i + 1;
   function frame(maxV, minV, cur, fmtTick) {
     const { W, H, L, R, T, B } = CH;
-    const top = niceMax(maxV), bot = minV < 0 ? -niceMax(-minV) : 0;
+    // Marcas en valores redondos (múltiplos de 1, 2 o 5): el eje va de «bot» a «top» en pasos de «step».
+    const rango = Math.max(maxV, 0.0001) - Math.min(0, minV), step = Math.min(niceMax(rango / 4), niceMax(rango) / 4);
+    const top = Math.ceil(Math.max(maxV, 0.0001) / step) * step;
+    const bot = minV >= 0 ? 0 : -minV < step * 0.25 ? minV * 1.3 : -Math.ceil(-minV / step) * step; // un negativo pequeño no merece una marca
     const sy = v => T + (H - T - B) * (top - v) / (top - bot);
     let g = '';
-    const steps = 4;
-    for (let i = 0; i <= steps; i++) { const v = bot + (top - bot) * i / steps, y = sy(v); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="${L - 5}" y="${y + 3}" text-anchor="end">${fmtTick(v)}</text>`; }
+    for (let v = Math.ceil(bot / step - 1e-9) * step; v <= top + step / 2; v += step) { const y = sy(v); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="${L - 5}" y="${y + 3}" text-anchor="end">${fmtTick(Math.abs(v) < step / 1000 ? 0 : v)}</text>`; }
     if (bot < 0) g += `<line x1="${L}" x2="${W - R}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--muted)" stroke-width="1"/>`;
     const bw = (W - L - R) / 12;
     for (let i = 0; i < 12; i++) g += `<g data-month="${i + 1}" style="cursor:pointer"><rect x="${L + i * bw}" y="${T}" width="${bw}" height="${H - T - B}" fill="${sel(i) ? 'var(--surface-2)' : 'transparent'}"/><text x="${L + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle" style="${sel(i) ? 'fill:var(--ink);font-weight:700' : ''}">${MON3[i][0]}</text></g>`;
@@ -642,7 +717,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
       if (v == null) return;
       const x = f.x0(i) + f.bw * 0.2, w = f.bw * 0.6, y0 = f.sy(0), y1 = f.sy(v);
       g += `<g pointer-events="none"><rect x="${x}" y="${Math.min(y0, y1)}" width="${w}" height="${Math.max(1, Math.abs(y1 - y0))}" fill="${v < 0 ? 'var(--neg)' : 'var(--s-aho)'}" rx="1.5"/>
-        <text x="${x + w / 2}" y="${v < 0 ? y1 + 10 : y1 - 3}" text-anchor="middle" style="fill:var(--ink-2);font-size:8.5px">${Math.round(v * 100)}%</text></g>`;
+        ${(() => { const dentro = v < 0 && y1 + 10 > CH.H - CH.B; return `<text x="${x + w / 2}" y="${dentro ? y1 - 3 : v < 0 ? y1 + 10 : y1 - 3}" text-anchor="middle" style="fill:${dentro ? '#fff' : 'var(--ink-2)'};font-size:8.5px">${Math.round(v * 100)}%</text>`; })()}</g>`;
     });
     return svgWrap(g, 'Tasa de ahorro por mes');
   }
@@ -671,18 +746,52 @@ body.locked .fab, body.locked nav.tabs { display: none; }
   }
 
   /* ---------- vistas ---------- */
+  const CHEV = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+  const acc = (key, title, sum, body) => `<details class="acc" data-acc="${key}" ${S.open[key] ? 'open' : ''}><summary><span>${title}</span>${sum ? `<span class="sum">${sum}</span>` : ''}${CHEV}</summary><div class="acc-body">${body}</div></details>`;
+  const CAT_COLORS = ['var(--s-ing)', 'var(--s-fijos)', 'var(--s-var)', 'var(--s-aho)', 'var(--s-deu)'];
+  // Dona de gastos por categoría (las 5 más grandes + «Otras»), con 2px de separación entre porciones.
+  function donut(porCat, cur, scope) {
+    const items = Object.entries(porCat).filter(([k, v]) => GASTO.has(k.split('|')[0]) && !k.endsWith('|' + PAGO_TC) && v > 0.005).sort((a, b) => b[1] - a[1]);
+    const total = items.reduce((a, [, v]) => a + v, 0);
+    if (!total) return `<div class="card"><div class="empty"><span>Todavía no hay gastos en ${cur} este mes.</span></div></div>`;
+    const top = items.slice(0, 5), resto = items.slice(5).reduce((a, [, v]) => a + v, 0);
+    const parts = top.map(([k, v], i) => ({ k, name: k.split('|')[1], v, color: CAT_COLORS[i] }));
+    if (resto > 0.005) parts.push({ k: null, name: `Otras (${items.length - 5})`, v: resto, color: 'var(--other)' });
+    const R0 = 52, C = 2 * Math.PI * R0, gap = parts.length > 1 ? 2 : 0;
+    let off = 0, arcs = '';
+    for (const p of parts) {
+      const len = Math.max(0.5, p.v / total * C - gap);
+      arcs += `<circle r="${R0}" cx="75" cy="75" fill="none" stroke="${p.color}" stroke-width="20" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 75 75)"><title>${esc(p.name)}: ${esc(fmt(p.v, cur))}</title></circle>`;
+      off += p.v / total * C;
+    }
+    return `<div class="donut-wrap"><svg class="donut" viewBox="0 0 150 150" role="img" aria-label="Gastos por categoría en ${cur}">${arcs}
+        <text x="75" y="70" text-anchor="middle" style="font-size:11px;fill:var(--muted);font-family:var(--body)">Gastaste</text>
+        <text x="75" y="90" text-anchor="middle" style="font-size:${compact(total, cur).length > 6 ? 16 : 19}px;font-weight:700">${esc(compact(total, cur))}</text></svg>
+      <div class="legend-list">${parts.map(p => `<button type="button" ${p.k ? `data-fcat="${esc(p.k)}" data-scope="${scope}"` : 'data-tab="movs"'}><span class="dot" style="background:${p.color}"></span><span class="n">${esc(p.name)}</span><span class="v num">${fmt(p.v, cur)}<small>${Math.round(p.v / total * 100)} %</small></span></button>`).join('')}</div></div>`;
+  }
+
   function viewMes() {
     const k = ym(S.year, S.month);
     const R = Object.fromEntries(CURS.map(c => [c, mensual(S.all, S.year, S.month, c, S.settings, S.saldos)]));
     const total = R.COP.n + R.USD.n;
     const pend = R.COP.pendientes + R.USD.pendientes;
+    const sinFecha = S.all.filter(t => !t.fecha).length;
     const hasPrest = CURS.some(c => R[c].prestamos);
-    const resumen = [
-      ['Ingreso', 'ingreso', 'Sin reembolsos ni retiros de ahorro'], ['Gastos fijos', 'fijos', 'Sin «Pago a TC»'], ['Gastos variables', 'variables', 'Menos lo que te reembolsaron'],
-      ['Ahorros', 'ahorros', 'Neto: aportes menos retiros'], ...(hasPrest ? [['Préstamos', 'prestamos', 'Pagos de préstamos']] : []),
-    ].map(([l, key, n]) => `<tr><td>${l}<small>${n}</small></td>${CURS.map(c => cell(R[c][key], c, key === 'ahorros')).join('')}</tr>`).join('');
-    const recent = sortTx(S.all.filter(t => t.mes === k)).slice(0, 6);
+    const recent = sortTx(S.all.filter(t => t.mes === k)).slice(0, 5);
     const tcCurs = CURS.filter(c => R[c].comprasTC || R[c].pagoTC || Math.abs(R[c].saldoTC) > 0.005 || R[c].cupo);
+    const ant = MONTHS[(S.month + 10) % 12];
+    // tarjetas principales
+    const heroes = CURS.map(c => {
+      const r = R[c], entra = r.traes + r.ingreso, usado = entra > 0 ? r.gastado / entra : (r.gastado > 0 ? 1 : 0);
+      return `<article class="hero-card" data-hero="${c}">
+        <div class="top"><span class="lbl">Disponible en ${MONTHS[S.month - 1]}</span><span class="cur">${c}</span></div>
+        <div class="amt num ${r.disponible < -0.005 ? 'neg' : ''}" data-count="${r.disponible}" data-cur="${c}" data-key="disp-${c}">${fmt(r.disponible, c)}</div>
+        <div class="split">${r.traes ? `Traes <b class="num">${fmt(r.traes, c)}</b> de ${ant} · ` : ''}balance del mes <b class="num">${fmt(r.balance, c)}</b></div>
+        <div class="meter ${usado > 1 ? 'over' : ''}" title="Gastado sobre lo que tenías"><i style="width:${Math.min(100, Math.max(0, usado * 100)).toFixed(1)}%"></i></div>
+        <div class="split">Usaste ${Math.round(usado * 100)} % de lo que tenías para el mes</div>
+        <div class="trio"><div><span>Entró</span><b class="num">${compact(r.ingreso, c)}</b></div><div><span>Gastaste</span><b class="num">${compact(r.gastado, c)}</b></div><div><span>Ahorraste</span><b class="num">${pct(r.tasaAhorro)}</b></div></div>
+      </article>`;
+    }).join('');
     // comparación contra el promedio
     const P = promedios(S.all, S.year, S.month, S.cur, S.settings);
     const este = R[S.cur].porCat;
@@ -693,49 +802,50 @@ body.locked .fab, body.locked nav.tabs { display: none; }
       const d = (r.e - r.p) / r.p; const up = d > 0.1, down = d < -0.1;
       return `<td class="${up ? 'neg' : down ? 'good' : 'zero'}">${up ? '▲ ' : down ? '▼ ' : ''}${d > 0 ? '+' : ''}${Math.round(d * 100)} %</td>`;
     };
-    return `<div class="hero"><div class="eyebrow">Balance · ${MONTHS[S.month - 1]} ${S.year}</div></div>
-      <div class="duo">${CURS.map(c => `<div class="bal"><span class="eyebrow">${c}</span><span class="v num ${R[c].balance < -0.005 ? 'neg' : ''}">${fmt(R[c].balance, c)}</span><span class="note">Ahorraste ${pct(R[c].tasaAhorro)} del ingreso</span></div>`).join('')}</div>
-      ${total ? '' : `<div class="card" style="margin-top:10px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o usa ‹ para ver meses anteriores.</span></div></div>`}
-      ${S.all.some(t => !t.fecha) ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${S.all.filter(t => !t.fecha).length} movimiento(s) de tu hoja no tienen fecha y no se están contando</span><span>Ponles fecha ›</span></button></section>` : ''}
+    const subidas = cmpRows.filter(r => r.p > 0.005 && (r.e - r.p) / r.p > 0.1).length;
+    const resumen = [
+      ['Traes del mes pasado', 'traes', `Saldo de débito al cierre de ${ant}`], ['Ingreso', 'ingreso', 'Sin reembolsos ni retiros de ahorro'], ['Gastos fijos', 'fijos', 'Sin «Pago a TC»'], ['Gastos variables', 'variables', 'Menos lo que te reembolsaron'],
+      ['Ahorros', 'ahorros', 'Neto: aportes menos retiros'], ...(hasPrest ? [['Préstamos', 'prestamos', 'Pagos de préstamos']] : []),
+    ].map(([l, key, n]) => `<tr><td>${l}<small>${n}</small></td>${CURS.map(c => cell(R[c][key], c, key === 'ahorros' || key === 'traes')).join('')}</tr>`).join('');
+    return `<div class="heros" id="heros">${heroes}</div>
+      <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
+      ${total ? '' : `<div class="card" style="margin-top:12px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o desliza hacia la derecha para ver meses anteriores.</span></div></div>`}
+      ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja sin fecha: no se están contando</span><span>Ponles fecha ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
-      <section class="block"><h2>Resumen</h2>
-        <div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
-          <tr class="total"><td>Balance</td>${CURS.map(c => cell(R[c].balance, c, true)).join('')}</tr>
+      <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
+      ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
+        <div class="card">${recent.map(txRow).join('')}</div></section>` : ''}
+      <div class="accs">
+      ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
+          ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
+        </tbody></table></div><div class="note" style="padding-inline:8px">En ${S.cur}, contra tus últimos ${P.n} mes${P.n > 1 ? 'es' : ''}. ▲ gastaste más de lo normal, ▼ menos.</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
+      ${acc('resumen', 'Resumen en COP y USD', '', `<div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
+          <tr class="strong"><td>Balance del mes</td>${CURS.map(c => cell(R[c].balance, c, true)).join('')}</tr>
+          <tr class="total"><td>Disponible<small>Lo que traes + balance del mes</small></td>${CURS.map(c => cell(R[c].disponible, c, true)).join('')}</tr>
         </tbody></table></div>
-        <div class="note">Balance = ingreso − gastos fijos − gastos variables − ahorros${hasPrest ? ' − préstamos' : ''}. La deuda de la tarjeta no se resta otra vez: ya está en tus gastos.</div></section>
-      <section class="block"><h2>Para analizar</h2>
-        <div class="card tight scrollx"><table class="tbl num">${head3('')}<tbody>
+        <div class="note" style="padding-inline:8px">Balance = ingreso − gastos fijos − gastos variables − ahorros${hasPrest ? ' − préstamos' : ''}. La deuda de la tarjeta no se resta otra vez: ya está en tus gastos.</div>
+        <div class="card tight scrollx"><table class="tbl num">${head3('Para analizar')}<tbody>
           <tr><td>Gasto recurrente<small>Lo que cuesta un mes normal</small></td>${CURS.map(c => cell(R[c].recurrente, c)).join('')}</tr>
           <tr><td>Gasto extraordinario<small>Viajes, matrícula y lo que marques</small></td>${CURS.map(c => cell(R[c].extraordinario, c)).join('')}</tr>
           <tr><td>Tasa de ahorro</td>${CURS.map(c => `<td class="${R[c].tasaAhorro < 0 ? 'neg' : R[c].tasaAhorro == null ? 'zero' : ''}">${pct(R[c].tasaAhorro)}</td>`).join('')}</tr>
           <tr><td>Reembolsos recibidos<small>Ya descontados de tus gastos</small></td>${CURS.map(c => cell(R[c].reembolsos, c)).join('')}</tr>
-        </tbody></table></div></section>
-      <section class="block"><div class="sechead"><h2>Comparado con tu promedio</h2>${curSeg('Moneda de la comparación')}</div>
-        ${P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
-          ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
-        </tbody></table></div>
-        <div class="note">Promedio de tus últimos ${P.n} mes${P.n > 1 ? 'es' : ''} con movimientos en ${S.cur}. ▲ gastaste más de lo normal, ▼ menos.</div>`
-        : `<div class="card"><div class="empty"><span>Aún no hay meses anteriores en ${S.cur} para comparar.</span></div></div>`}</section>
-      <div class="row between"><span class="note">${S.showZeros ? 'Mostrando todas las categorías' : 'Solo categorías con movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
-      ${desglose('Ingreso', R, 'ingreso', 'month')}
-      ${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}
-      ${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}
-      ${desglose('Ahorros', R, 'ahorros', 'month')}
-      ${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}
-      ${tcCurs.length ? `<section class="block"><h2>${dotH('var(--s-deu)')}Tarjeta de crédito</h2><div class="card tight scrollx"><table class="tbl num"><thead><tr><th></th>${tcCurs.map(c => `<th class="cur">${c}</th>`).join('')}</tr></thead><tbody>
+        </tbody></table></div>`)}
+      ${acc('desglose', 'Desglose por categoría', 'COP y USD', `<div class="row between" style="padding-inline:8px"><span class="note">${S.showZeros ? 'Todas las categorías' : 'Solo las que tienen movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
+        ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${desglose('Ahorros', R, 'ahorros', 'month')}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
+      ${tcCurs.length ? acc('tc', 'Tarjeta de crédito', tcCurs.map(c => R[c].saldoTC > 0.005 ? `Debes ${compact(R[c].saldoTC, c)} ${c}` : R[c].saldoTC < -0.005 ? `A favor ${compact(-R[c].saldoTC, c)} ${c}` : `${c} al día`).join(' · '), `<div class="card tight scrollx"><table class="tbl num"><thead><tr><th></th>${tcCurs.map(c => `<th class="cur">${c}</th>`).join('')}</tr></thead><tbody>
           <tr><td>Compras con TC</td>${tcCurs.map(c => cell(R[c].comprasTC, c)).join('')}</tr>
           <tr><td>Pagos a la TC</td>${tcCurs.map(c => cell(R[c].pagoTC, c)).join('')}</tr>
           <tr class="strong"><td>Saldo pendiente<small>Al cierre del mes; negativo = saldo a favor</small></td>${tcCurs.map(c => cell(R[c].saldoTC, c)).join('')}</tr>
           ${tcCurs.some(c => R[c].cupo) ? `<tr><td>Cupo disponible<small>Cupo de ${tcCurs.filter(c => R[c].cupo).map(c => fmt(R[c].cupo, c)).join(' / ')}</small></td>${tcCurs.map(c => cell(R[c].cupoDisponible, c, true)).join('')}</tr>` : ''}
-        </tbody></table></div></section>` : ''}
-      <section class="block"><h2>Cuenta débito</h2><div class="card tight scrollx"><table class="tbl num">${head3('')}<tbody>
+        </tbody></table></div>`) : ''}
+      ${acc('debito', 'Cuenta débito', 'Cuadra con el banco', `<div class="card tight scrollx"><table class="tbl num">${head3('')}<tbody>
+          <tr><td>Traes de ${ant}<small>${CURS.map(c => R[c].saldoAnteriorReal ? `${c}: saldo real` : `${c}: calculado`).join(' · ')}</small></td>${CURS.map(c => cell(R[c].saldoAnterior, c, true)).join('')}</tr>
           <tr><td>Saldo según la app<small>Al cierre de ${MONTHS[S.month - 1]}</small></td>${CURS.map(c => cell(R[c].debito, c, true)).join('')}</tr>
           <tr><td>Saldo real del banco<small>Escríbelo para cuadrar</small></td>${CURS.map(c => `<td><input class="inp num mini" id="sr-${c}" data-saldo="${c}" data-mes="${k}" inputmode="decimal" placeholder="—" value="${Number.isFinite(R[c].debitoReal) ? esc(R[c].debitoReal.toLocaleString('es-CO')) : ''}" aria-label="Saldo real ${c}"></td>`).join('')}</tr>
           <tr class="strong"><td>Diferencia<small>Lo que falta por anotar</small></td>${CURS.map(c => Number.isFinite(R[c].debitoReal) ? cell(R[c].debitoReal - R[c].debito, c, true) : '<td class="zero">—</td>').join('')}</tr>
         </tbody></table></div>
-        <div class="note">Cuando anotas el saldo real, los meses siguientes parten de ese valor.</div></section>
-      ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
-        <div class="card">${recent.map(txRow).join('')}</div></section>` : ''}`;
+        <div class="note" style="padding-inline:8px">El saldo real que anotes aquí es el que traes al mes siguiente. Si no lo anotas, la app lo calcula.</div>`)}
+      </div>`;
   }
 
   function viewMovs() {
@@ -842,6 +952,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
         <div class="setrow"><label for="cupo">Cupo de la tarjeta de crédito<div class="note">0 = no mostrar cupo</div></label><input class="inp num" id="cupo" data-set="cupoTC" inputmode="decimal" value="${num(st.cupoTC?.[c])}" placeholder="0"></div>
         <div class="setrow"><label for="tcIni">Deuda de la TC antes del primer registro<div class="note">Normalmente 0</div></label><input class="inp num" id="tcIni" data-set="tcInicial" inputmode="decimal" value="${num(st.tcInicial?.[c])}" placeholder="0"></div>
         <div class="setrow"><label for="debIni">Saldo inicial cuenta débito<div class="note">Se usa hasta que anotes un saldo real</div></label><input class="inp num" id="debIni" data-set="debitoInicial" inputmode="decimal" value="${num(deb.inicial)}" placeholder="0"></div>
+        <div class="setrow"><label for="traer">Traer el saldo de débito del mes anterior<div class="note">Lo que quedó en la cuenta se suma a lo disponible del mes nuevo</div></label><input type="checkbox" id="traer" data-set="traerSaldo" ${st.traerSaldo?.[c] !== false ? 'checked' : ''}></div>
         <div class="setrow"><label for="debAh">Los ahorros salen de la cuenta débito<div class="note">Tu hoja: sí en COP, no en USD</div></label><input type="checkbox" id="debAh" data-set="debitoAhorros" ${deb.restaAhorros ? 'checked' : ''}></div>
       </div></section>
       <section class="block"><h2>Categorías extraordinarias</h2>
@@ -867,6 +978,21 @@ body.locked .fab, body.locked nav.tabs { display: none; }
         <button type="button" class="btn danger" id="desconectar" style="flex:none">Desconectar este dispositivo</button></section>`;
   }
 
+  let ultimaVista = '', enterT;
+  const cifras = {};
+  // Las cifras grandes cuentan hasta su valor cuando cambian.
+  function animarCifras() {
+    const quieto = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const to = Number(el.dataset.count), cur = el.dataset.cur, key = el.dataset.key;
+      const from = cifras[key] ?? 0; cifras[key] = to;
+      if (quieto || Math.abs(from - to) < 0.005) return;
+      const t0 = performance.now(), dur = 700;
+      const paso = t => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = fmt(from + (to - from) * e, cur); if (k < 1 && el.isConnected) requestAnimationFrame(paso); };
+      requestAnimationFrame(paso);
+    });
+  }
+
   function render() {
     $('#periodLabel').textContent = S.tab === 'anio' ? String(S.year) : `${MONTHS[S.month - 1]} ${S.year}`;
     document.querySelectorAll('nav.tabs [data-tab]').forEach(b => b.dataset.tab === S.tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
@@ -878,6 +1004,11 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     const ae = document.activeElement, focusId = ae?.id, caret = ae?.selectionStart;
     if (ae && ae.dataset?.saldo) return; // no redibujar mientras escribe un saldo
     v.innerHTML = S.tab === 'movs' ? viewMovs() : S.tab === 'anio' ? viewAnio() : S.tab === 'ajustes' ? viewAjustes() : viewMes();
+    const vista = [S.tab, S.year, S.month, S.tab === 'anio' ? S.cur : ''].join('|');
+    if (vista !== ultimaVista) { ultimaVista = vista; v.classList.remove('enter'); void v.offsetWidth; v.classList.add('enter'); clearTimeout(enterT); enterT = setTimeout(() => v.classList.remove('enter'), 900); }
+    const h = $('#heros'), card = h?.querySelector(`[data-hero="${S.cur}"]`);
+    if (h && card) h.scrollLeft = card.offsetLeft - h.offsetLeft - 16;
+    animarCifras();
     if (focusId === 'q') { const q = $('#q'); q?.focus(); try { q.setSelectionRange(caret, caret); } catch {} }
   }
 
@@ -988,6 +1119,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     if (d.clearsin) { S.fSin = false; render(); return; }
     if (d.sinfecha) { S.fSin = true; S.fCat = null; S.fPend = false; S.fType = 'all'; S.fCur = 'all'; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
     if (d.cur) { S.cur = d.cur; store.set('cur', S.cur); render(); return; }
+    if (d.herogo) { S.cur = d.herogo; store.set('cur', S.cur); const h = $('#heros'), card = h?.querySelector(`[data-hero="${d.herogo}"]`); if (card) h.scrollTo({ left: card.offsetLeft - h.offsetLeft - 16, behavior: 'smooth' }); return; }
     if (d.tab) { S.tab = d.tab; if (d.tab !== 'movs') { S.fCat = null; S.fSin = false; } store.set('tab', S.tab); render(); window.scrollTo(0, 0); return; }
     if (d.step) {
       const k = Number(d.step);
@@ -1040,6 +1172,29 @@ body.locked .fab, body.locked nav.tabs { display: none; }
       olvidarDispositivo();
     }
   });
+  document.addEventListener('toggle', e => {
+    const d = e.target; if (!d.dataset?.acc) return;
+    S.open[d.dataset.acc] = d.open; store.set('open', S.open);
+  }, true);
+  let heroT;
+  document.addEventListener('scroll', e => {
+    const h = e.target; if (h.id !== 'heros') return;
+    clearTimeout(heroT);
+    heroT = setTimeout(() => {
+      const w = h.firstElementChild.offsetWidth + 10, c = CURS[Math.round(h.scrollLeft / w)];
+      if (c && c !== S.cur) { S.cur = c; store.set('cur', c); render(); }
+    }, 140);
+  }, true);
+  let toque = null;
+  document.addEventListener('touchstart', e => {
+    const t = e.touches[0];
+    toque = (S.tab === 'mes' || S.tab === 'movs') && !e.target.closest('.heros, .scrollx, .chiprow, .donut-wrap, input, .sheet, nav') ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    if (!toque) return;
+    const t = e.changedTouches[0], dx = t.clientX - toque.x, dy = t.clientY - toque.y; toque = null;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 45) $(`.period [data-step="${dx > 0 ? -1 : 1}"]`)?.click();
+  }, { passive: true });
   document.addEventListener('input', e => {
     if (e.target.id === 'q') { S.q = e.target.value; render(); }
     if (e.target.id === 'pinIn') { const v = e.target.value.replace(/\D/g, '').slice(0, 4); e.target.value = v; if (v.length === 4) { e.target.disabled = true; recibirPin(v); } }
@@ -1072,6 +1227,7 @@ body.locked .fab, body.locked nav.tabs { display: none; }
     if (d.set === 'cupoTC') { next.cupoTC[c] = n > 0 ? n : 0; toast(n > 0 ? `Cupo TC ${c}: ${fmt(n, c)}` : 'Cupo TC sin mostrar'); }
     if (d.set === 'tcInicial') { next.tcInicial[c] = Number.isFinite(n) ? n : 0; toast('Deuda inicial guardada'); }
     if (d.set === 'debitoInicial') { next.debito[c].inicial = Number.isFinite(n) ? n : 0; toast('Saldo inicial guardado'); }
+    if (d.set === 'traerSaldo') { next.traerSaldo = { ...(next.traerSaldo || {}), [c]: el.checked }; toast(el.checked ? 'Se traerá el saldo del mes anterior' : 'Ya no se trae el saldo del mes anterior'); }
     if (d.set === 'debitoAhorros') { next.debito[c].restaAhorros = el.checked; toast('Ajuste guardado'); }
     saveSettings(next);
   });
