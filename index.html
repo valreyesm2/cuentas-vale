@@ -208,7 +208,11 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 .setrow input[type=checkbox] { justify-self: end; width: 22px; height: 22px; accent-color: var(--accent); }
 
 .tbl td.good { color: var(--pos); }
-.tbl.tap tr[data-fcat] { cursor: pointer; }
+.tbl.tap tr[data-fcat], .tbl.tap tr[data-gotipo] { cursor: pointer; }
+.tbl.tap tr[data-gotipo]:hover td { background: var(--surface-2); }
+.tbl .go { color: var(--muted); }
+.tbl.resumen tr.sub td { color: var(--ink-2); font-size: 12.5px; }
+.tbl.resumen th:first-child { text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--ink); }
 .tbl.tap tr[data-fcat]:hover td, .tbl.heat tr[data-fcat]:hover td:first-child { background: var(--surface-2); }
 .tbl.tap tr[data-fcat] td:first-child::after { content: " ›"; color: var(--muted); }
 .tbl.heat tr[data-fcat] { cursor: pointer; }
@@ -896,12 +900,30 @@ body.locked .period { visibility: hidden; }
       return `<td class="${up ? 'neg' : down ? 'good' : 'zero'}">${up ? '▲ ' : down ? '▼ ' : ''}${d > 0 ? '+' : ''}${Math.round(d * 100)} %</td>`;
     };
     const subidas = cmpRows.filter(r => r.p > 0.005 && (r.e - r.p) / r.p > 0.1).length;
-    const resumen = [
-      ['Traes del mes pasado', 'traes', `Saldo de débito al cierre de ${ant}`], ['Ingreso', 'ingreso', 'Sin reembolsos ni retiros de ahorro'], ['Gastos fijos', 'fijos', 'Sin «Pago a TC»'], ['Gastos variables', 'variables', 'Menos lo que te reembolsaron'],
-      ['Ahorros', 'ahorros', 'Neto: aportes menos retiros'], ...(hasPrest ? [['Préstamos', 'prestamos', 'Pagos de préstamos']] : []),
-    ].map(([l, key, n]) => `<tr><td>${l}<small>${n}</small></td>${CURS.map(c => cell(R[c][key], c, key === 'ahorros' || key === 'traes')).join('')}</tr>`).join('');
+    // Resumen del mes, siempre visible: cada cifra con su % del ingreso; toca una fila para ver esos movimientos.
+    const pctIng = (v, c) => R[c].ingreso > 0.005 && Math.abs(v) > 0.005 ? `<small>${Math.round(v / R[c].ingreso * 100)} % del ingreso</small>` : '';
+    const fila = (label, key, opts = {}) => `<tr class="${opts.cls || ''}" ${opts.tipo ? `data-gotipo="${opts.tipo}"` : ''}><td>${opts.color ? `<span class="dot" style="background:${opts.color};display:inline-block;margin-right:7px"></span>` : ''}${label}${opts.tipo ? ' <span class="go">›</span>' : ''}${opts.nota ? `<small>${opts.nota}</small>` : ''}</td>${CURS.map(c => {
+        const v = R[c][key], signed = opts.signed;
+        return `<td class="${Math.abs(v) < 0.005 ? 'zero' : signed && v < 0 ? 'neg' : ''}">${fmt(v, c)}${opts.pct ? pctIng(v, c) : ''}</td>`;
+      }).join('')}</tr>`;
+    const hayTraes = CURS.some(c => Math.abs(R[c].traes) > 0.005), hayAho = CURS.some(c => R[c].prestadoMes > 0.005 || R[c].devueltoMes > 0.005);
+    const resumenMes = `<section class="block"><h2>Resumen del mes</h2>
+      <div class="card tight scrollx"><table class="tbl num tap resumen">${head3(MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1))}<tbody>
+        ${hayTraes ? fila('Traes de ' + ant, 'traes', { nota: 'Saldo en débito', signed: true }) : ''}
+        ${fila('Ingresos', 'ingreso', { color: 'var(--s-ing)', tipo: 'Ingreso' })}
+        ${fila('Gastos fijos', 'fijos', { color: 'var(--s-fijos)', tipo: 'Gastos Fijos', pct: true })}
+        ${fila('Gastos variables', 'variables', { color: 'var(--s-var)', tipo: 'Gastos Variables', pct: true })}
+        ${fila('Total gastado', 'gastado', { cls: 'strong', pct: true })}
+        ${fila('Ahorros', 'ahorros', { color: 'var(--s-aho)', tipo: 'Ahorros', pct: true, signed: true })}
+        ${hasPrest ? fila('Pagos de préstamos', 'prestamos', { color: 'var(--s-deu)', tipo: 'Deudas', pct: true }) : ''}
+        ${hayAho ? fila('Tomaste de tus ahorros', 'prestadoMes', { cls: 'sub', nota: 'Préstamo: ya está en Ahorros' }) + fila('Devolviste a tus ahorros', 'devueltoMes', { cls: 'sub', nota: 'Ya está en Ahorros' }) : ''}
+        ${fila('Balance del mes', 'balance', { cls: 'strong', signed: true })}
+        ${fila('Disponible', 'disponible', { cls: 'total', signed: true, nota: hayTraes ? 'Lo que traes + balance' : '' })}
+      </tbody></table></div>
+      <div class="note">Balance = ingresos − gastos − ahorros${hasPrest ? ' − préstamos' : ''}. Ingresos sin reembolsos ni retiros de ahorro; ahorros = aportes − retiros. Toca una fila con › para ver sus movimientos.</div></section>`;
     return `<div class="heros" id="heros">${heroes}</div>
       <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
+      ${total ? resumenMes : ''}
       ${total ? '' : `<div class="card" style="margin-top:12px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o desliza hacia la derecha para ver meses anteriores.</span></div></div>`}
 ${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
@@ -915,12 +937,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
           ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
         </tbody></table></div><div class="note" style="padding-inline:8px">Promedio mensual en ${S.cur} de ${P.n === 1 ? MONTHS[+P.meses[0].slice(5) - 1] : `${MON3[+P.meses[0].slice(5) - 1].toLowerCase()} ${P.meses[0].slice(0, 4)} a ${MON3[+P.meses.at(-1).slice(5) - 1].toLowerCase()} ${P.meses.at(-1).slice(0, 4)}`} (${P.n} mes${P.n > 1 ? 'es' : ''} con gastos en ${S.cur}). ▲ gastaste más de lo normal, ▼ menos.${S.year === now.getFullYear() && S.month === now.getMonth() + 1 ? ` <b>${MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1)} todavía no termina</b> (día ${now.getDate()} de ${new Date(S.year, S.month, 0).getDate()}): lo normal es que aún vayas por debajo.` : ''}</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
-      ${acc('resumen', 'Resumen en COP y USD', '', `<div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
-          <tr class="strong"><td>Balance del mes</td>${CURS.map(c => cell(R[c].balance, c, true)).join('')}</tr>
-          <tr class="total"><td>Disponible<small>Lo que traes + balance del mes</small></td>${CURS.map(c => cell(R[c].disponible, c, true)).join('')}</tr>
-        </tbody></table></div>
-        <div class="note" style="padding-inline:8px">Balance = ingreso − gastos fijos − gastos variables − ahorros${hasPrest ? ' − préstamos' : ''}. La deuda de la tarjeta no se resta otra vez: ya está en tus gastos.</div>
-        <div class="card tight scrollx"><table class="tbl num">${head3('Para analizar')}<tbody>
+      ${acc('analizar', 'Para analizar', 'Recurrente, extraordinario, ahorro', `        <div class="card tight scrollx"><table class="tbl num">${head3('Para analizar')}<tbody>
           <tr><td>Gasto recurrente<small>Lo que cuesta un mes normal</small></td>${CURS.map(c => cell(R[c].recurrente, c)).join('')}</tr>
           <tr><td>Gasto extraordinario<small>Viajes, matrícula y lo que marques</small></td>${CURS.map(c => cell(R[c].extraordinario, c)).join('')}</tr>
           <tr><td>Tasa de ahorro</td>${CURS.map(c => `<td class="${R[c].tasaAhorro < 0 ? 'neg' : R[c].tasaAhorro == null ? 'zero' : ''}">${pct(R[c].tasaAhorro)}</td>`).join('')}</tr>
@@ -1237,9 +1254,10 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
 
   /* ---------- eventos ---------- */
   document.addEventListener('click', async e => {
-    const b = e.target.closest('button, [data-month], tr[data-fcat]'); if (!b || b.closest('#sheetRoot')) return;
+    const b = e.target.closest('button, [data-month], tr[data-fcat], tr[data-gotipo]'); if (!b || b.closest('#sheetRoot')) return;
     const d = b.dataset;
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
+    if (d.gotipo) { S.fType = d.gotipo; S.fCur = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
     if (d.reintentar) { reintentar(); return; }
     if (d.fprest) { S.fPrest = !S.fPrest; render(); return; }
     if (d.clearcat) { S.fCat = null; render(); return; }
