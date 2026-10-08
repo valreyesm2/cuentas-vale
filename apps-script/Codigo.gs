@@ -63,8 +63,8 @@ function doPost(e) {
   try {
     switch (req.accion) {
       case 'cargar': return conBloqueo_(() => salida_(Object.assign({ ok: true }, cargar_())));
-      case 'guardarMovs': return conBloqueo_(() => salida_({ ok: true, ids: guardarMovs_(req.movs || []) }));
-      case 'borrarMov': return conBloqueo_(() => salida_({ ok: true, borrado: borrarMov_(req.id) }));
+      case 'guardarMovs': return conBloqueo_(() => { const ids = guardarMovs_(req.movs || []); SpreadsheetApp.flush(); return salida_({ ok: true, ids }); });
+      case 'borrarMov': return conBloqueo_(() => { const borrado = borrarMov_(req.id); SpreadsheetApp.flush(); return salida_({ ok: true, borrado }); });
       case 'guardarAjustes': return conBloqueo_(() => { guardarJson_('AJUSTES', req.ajustes || {}); return salida_({ ok: true }); });
       case 'guardarSaldo': return conBloqueo_(() => { guardarSaldo_(req.mes, req.COP, req.USD); return salida_({ ok: true }); });
       default: return salida_({ ok: false, error: 'accion' });
@@ -194,18 +194,16 @@ function escribirFila_(h, fila, valores, id, extras, conservarMonto) {
   ponerCategoria_(h.getRange(fila, COL.categoria), valores[2]);
 }
 
-// Si la validación de la celda rechaza la categoría (la lista dependiente aún no se actualiza),
-// se quita la regla un momento, se escribe el valor y se vuelve a poner la misma regla.
+// La lista desplegable de CATEGORIA depende de la pestaña DROPDOWN, que Google recalcula con
+// retraso, y la regla está en «rechazar»: Google rechaza la categoría al aplicar los cambios.
+// Por eso la categoría se escribe quitando la regla de esa celda un instante y poniéndola
+// de nuevo, idéntica. La regla de la hoja queda como estaba.
 function ponerCategoria_(celda, valor) {
   if (String(celda.getValue()) === String(valor)) return;
-  try {
-    celda.setValue(valor);
-  } catch (err) {
-    const regla = celda.getDataValidation();
-    celda.clearDataValidations();
-    celda.setValue(valor);
-    if (regla) celda.setDataValidation(regla);
-  }
+  const regla = celda.getDataValidation();
+  if (regla) celda.clearDataValidations();
+  celda.setValue(valor);
+  if (regla) celda.setDataValidation(regla);
 }
 
 function borrarMov_(id) {

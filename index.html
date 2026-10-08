@@ -477,13 +477,15 @@ body.locked .period { visibility: hidden; }
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
     fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, open: store.get('open', {}),
-    cola: store.get('cola', []), // movimientos que no se pudieron guardar en la hoja q: '', selMonth: null,
+    q: '', selMonth: null,
+    cola: store.get('cola', []), // movimientos que no se pudieron guardar en la hoja
   };
 
   const $ = s => document.querySelector(s);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtCache = {};
   const fmt = (n, cur) => {
+    if (!CURS.includes(cur)) return (Number(n) || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 });
     fmtCache[cur] ||= new Intl.NumberFormat('es-CO', { style: 'currency', currency: cur, currencyDisplay: cur === 'USD' ? 'symbol' : 'narrowSymbol', minimumFractionDigits: cur === 'COP' ? 0 : 2, maximumFractionDigits: cur === 'COP' ? 0 : 2 });
     return fmtCache[cur].format(Math.abs(n) < 0.005 ? 0 : (n || 0));
   };
@@ -574,11 +576,15 @@ body.locked .period { visibility: hidden; }
   async function api(accion, data = {}) {
     if (!CONN) throw Object.assign(new Error('sin conexión'), { code: 'sin_conexion' });
     const r = await fetch(CONN.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ clave: CONN.clave, accion, ...data }) });
-    const j = await r.json();
+    const texto = await r.text();
+    let j;
+    try { j = JSON.parse(texto); }
+    catch { const m = texto.match(/monospace[^>]*>([^<]+)</); throw Object.assign(new Error(m ? m[1].trim() : 'El programa de Google devolvió un error'), { code: 'google' }); }
     if (!j.ok) throw Object.assign(new Error(j.error || 'error'), { code: j.error });
     return j;
   }
-  const withDerived = t => ({ ...t, monto: Number(t.monto), anio: Number(String(t.fecha).slice(0, 4)), mes: String(t.fecha).slice(0, 7) });
+  const incompleto = t => !t.fecha || !t.categoria || !CURS.includes(t.moneda) || !Number(t.monto);
+  const withDerived = t => { const ok = !incompleto(t); return { ...t, monto: Number(t.monto) || 0, anio: ok ? Number(String(t.fecha).slice(0, 4)) : NaN, mes: ok ? String(t.fecha).slice(0, 7) : '' }; };
   function applyData(d) {
     const enHoja = new Set((d.movimientos || []).map(t => t.id));
     S.cola = (S.cola || []).filter(t => !enHoja.has(t.id)); store.set('cola', S.cola);
@@ -664,16 +670,17 @@ body.locked .period { visibility: hidden; }
   function txRow(t) {
     const ty = TYPE[t.tipo] || { color: 'var(--muted)', ab: '?' };
     const isIn = moneyIn(t);
-    const first = isReembolso(t) && t.reembolsaA ? `Reembolso de ${t.reembolsaA}` : t.categoria;
+    const first = isReembolso(t) && t.reembolsaA ? `Reembolso de ${t.reembolsaA}` : (t.categoria || `${t.tipo || 'Movimiento'} sin categoría`);
     const sub = [t.detalle, t.medio && t.medio !== 'NA' ? t.medio.replace('Tarjeta ', 'T. ') : ''].filter(Boolean).join(' · ');
     const pills = (impVal(t) === 'No' ? ' <span class="pill warn">Impuesto pendiente</span>' : '')
       + (isExtra(t, S.settings) ? ' <span class="pill">Extraordinario</span>' : '')
       + (t.tipo === 'Deudas' && t.categoria === DEUDA_TC ? ' <span class="pill">Ya no se usa</span>' : '')
-      + (t._sinGuardar ? ' <span class="pill warn">Sin guardar</span>' : '');
+      + (t._sinGuardar ? ' <span class="pill warn">Sin guardar</span>' : '')
+      + (incompleto(t) ? ' <span class="pill warn">Incompleto</span>' : '');
     return `<button type="button" class="tx" data-edit="${esc(t.id)}">
       <span class="ic" style="background:${ty.color}">${ty.ab}</span>
       <span class="t"><b>${esc(first)}</b><span>${esc(sub || t.tipo)}${pills}</span></span>
-      <span class="m num ${isIn ? 'in' : ''}">${isIn ? '+' : '−'}${fmt(Math.abs(t.monto), t.moneda)}<small>${esc(t.moneda)}</small></span>
+      <span class="m num ${isIn ? 'in' : ''}">${isIn ? '+' : '−'}${fmt(Math.abs(t.monto), t.moneda)}<small>${esc(t.moneda || '—')}</small></span>
     </button>`;
   }
   const cell = (v, cur, signed) => `<td class="${v == null || Math.abs(v) < 0.005 ? 'zero' : signed && v < 0 ? 'neg' : ''}">${v == null ? '—' : fmt(v, cur)}</td>`;
@@ -801,7 +808,7 @@ body.locked .period { visibility: hidden; }
     const R = Object.fromEntries(CURS.map(c => [c, mensual(S.all, S.year, S.month, c, S.settings, S.saldos)]));
     const total = R.COP.n + R.USD.n;
     const pend = R.COP.pendientes + R.USD.pendientes;
-    const sinFecha = S.all.filter(t => !t.fecha).length;
+    const sinFecha = S.all.filter(incompleto).length;
     const hasPrest = CURS.some(c => R[c].prestamos);
     const recent = sortTx(S.all.filter(t => t.mes === k)).slice(0, 5);
     const tcCurs = CURS.filter(c => R[c].comprasTC || R[c].pagoTC || Math.abs(R[c].saldoTC) > 0.005 || R[c].cupo);
@@ -837,7 +844,7 @@ body.locked .period { visibility: hidden; }
       <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
       ${total ? '' : `<div class="card" style="margin-top:12px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o desliza hacia la derecha para ver meses anteriores.</span></div></div>`}
 ${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
-      ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja sin fecha: no se están contando</span><span>Ponles fecha ›</span></button></section>` : ''}
+      ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
       ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
@@ -878,7 +885,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
   function viewMovs() {
     const q = S.q.trim().toLowerCase();
     let list;
-    if (S.fSin) list = S.all.filter(t => !t.fecha);
+    if (S.fSin) list = S.all.filter(incompleto);
     else if (S.fCat) {
       const [tp, ca] = S.fCat.key.split('|');
       list = S.all.filter(t => (S.fCat.scope === 'year' ? t.anio === S.year : t.mes === ym(S.year, S.month)) &&
@@ -895,13 +902,13 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       html += txRow(t);
     }
     if (last) html += '</div>';
-    const scope = S.fSin ? 'Movimientos sin fecha: tócalos para ponerles fecha' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
+    const scope = S.fSin ? 'Movimientos incompletos: tócalos para completarlos' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
     const tot = CURS.filter(c => list.some(t => t.moneda === c)).map(c => {
       const L = list.filter(t => t.moneda === c);
       return `<tr><td>${c}</td><td>${fmt(L.filter(moneyIn).reduce((a, t) => a + Math.abs(t.monto), 0), c)}</td><td>${fmt(L.filter(t => !moneyIn(t)).reduce((a, t) => a + Number(t.monto), 0), c)}</td></tr>`;
     }).join('');
     return `${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}<section class="block">
-      ${S.fSin ? `<button type="button" class="chip" data-clearsin="1" aria-pressed="true">Sin fecha ✕</button>` : S.fCat ? `<button type="button" class="chip" data-clearcat="1" aria-pressed="true">${esc(S.fCat.key.split('|')[1])} ✕</button>` : `<input class="search" id="q" type="search" placeholder="Buscar: Glovo, Arriendo, Zara…" value="${esc(S.q)}" autocomplete="off">`}
+      ${S.fSin ? `<button type="button" class="chip" data-clearsin="1" aria-pressed="true">Incompletos ✕</button>` : S.fCat ? `<button type="button" class="chip" data-clearcat="1" aria-pressed="true">${esc(S.fCat.key.split('|')[1])} ✕</button>` : `<input class="search" id="q" type="search" placeholder="Buscar: Glovo, Arriendo, Zara…" value="${esc(S.q)}" autocomplete="off">`}
       <div class="seg full" role="group" aria-label="Moneda">${[['all', 'Ambas'], ['COP', 'COP'], ['USD', 'USD']].map(([v, l]) => `<button type="button" data-fcur="${v}" aria-pressed="${S.fCur === v}">${l}</button>`).join('')}</div>
       <div class="chiprow" role="group" aria-label="Filtrar por tipo">
         <button type="button" class="chip" data-ftype="all" aria-pressed="${S.fType === 'all'}">Todos</button>
@@ -1046,7 +1053,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
     const st = {
       tipo: tx?.tipo || store.get('lastTipo', 'Gastos Variables'),
       categoria: tx?.categoria || '',
-      moneda: tx?.moneda || store.get('lastCur', 'USD'),
+      moneda: CURS.includes(tx?.moneda) ? tx.moneda : store.get('lastCur', 'USD'),
       medio: tx?.medio || store.get('lastMedio', 'Tarjeta de Crédito'),
       impuesto: tx ? impVal(tx) : store.get('lastImp', 'Si'),
       extra: tx?.extra === true,
@@ -1076,7 +1083,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
     };
     const preview = () => { const n = parseAmount($('#f-monto').value, st.moneda); $('#amtPrev').textContent = Number.isFinite(n) && n !== 0 ? fmt(n, st.moneda) + ' ' + st.moneda : ''; };
     const defDate = S.month === now.getMonth() + 1 && S.year === now.getFullYear() ? todayStr() : ym(S.year, S.month) + '-01';
-    const startAmt = tx ? tx.monto : '';
+    const startAmt = tx && Number(tx.monto) ? tx.monto : '';
     root.innerHTML = `<div class="scrim" id="scrim"><form class="sheet" id="txForm" aria-label="${edit ? 'Editar movimiento' : 'Nuevo movimiento'}" novalidate>
       <div class="grab"></div>
       <div class="row between"><h3>${edit ? 'Editar movimiento' : 'Nuevo movimiento'}</h3><div class="seg" id="curPick" role="group" aria-label="Moneda"></div></div>
