@@ -289,6 +289,13 @@ details.acc .card { background: transparent; }
 .plan select { width: auto; padding: 6px 10px; }
 .plan-res { color: var(--ink-2); }
 details.acc .actions, .loan .actions { flex-wrap: wrap; }
+.cascada svg { overflow: visible; }
+.cascada .cv { fill: var(--ink); font-size: 10.5px; font-weight: 700; font-family: var(--body); }
+.cascada .cn { fill: var(--muted); font-size: 10.5px; font-family: var(--body); }
+.cascada g[data-gotipo]:hover rect[rx] { filter: brightness(1.08); }
+.cascada-pie { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); padding: 4px 6px 6px; }
+.cascada-pie span { display: inline-flex; align-items: center; gap: 6px; }
+.cascada-pie .muted { color: var(--muted); }
 body.locked .fab, body.locked nav.tabs { display: none; }
 body.locked .period { visibility: hidden; }
 .lock { display: grid; justify-items: center; gap: 12px; text-align: center; padding-block: 48px 24px; max-width: 340px; margin: 0 auto; }
@@ -631,6 +638,7 @@ body.locked .period { visibility: hidden; }
     S.settings = mergeSettings(d.ajustes || {});
     if (d.categorias && Object.values(d.categorias).some(l => l.length)) S.settings.categorias = d.categorias;
     S.categorias = d.categorias || null;
+    S.versionGs = Number(d.version) || 0;
     S.saldos = d.saldos || {};
     S.loaded = true;
   }
@@ -638,7 +646,7 @@ body.locked .period { visibility: hidden; }
     setSync('Actualizando…');
     try {
       const d = await api('cargar');
-      applyData(d); store.set('cache', { movimientos: d.movimientos, ajustes: d.ajustes, saldos: d.saldos, categorias: d.categorias });
+      applyData(d); store.set('cache', { movimientos: d.movimientos, ajustes: d.ajustes, saldos: d.saldos, categorias: d.categorias, version: d.version });
       setSync('Al día');
     } catch (e) {
       setSync(e.code === 'clave' ? 'Clave incorrecta' : 'Sin conexión · datos guardados en el celular');
@@ -651,13 +659,15 @@ body.locked .period { visibility: hidden; }
   function enviar(accion, data, revertir, msgError) {
     pendientes++; setSync('Guardando…');
     writing = writing.then(() => api(accion, data)).then(() => {
-      if (--pendientes === 0) { setSync('Al día'); store.set('cache', { movimientos: S.all, ajustes: S.settings, saldos: S.saldos, categorias: S.categorias }); }
+      if (--pendientes === 0) { setSync('Al día'); store.set('cache', { movimientos: S.all, ajustes: S.settings, saldos: S.saldos, categorias: S.categorias, version: S.versionGs }); }
     }, e => {
       pendientes--; revertir?.(); render(); setSync(e.code === 'clave' ? 'Clave incorrecta' : 'Sin guardar');
       toast((msgError || 'No se pudo guardar.') + (e.message && !/fetch|network|load/i.test(e.message) ? ` Motivo: ${e.message}` : ' Revisa tu conexión.'), 6000); console.warn(e);
     });
     return writing;
   }
+  const VERSION_GS = 3; // versión de apps-script/Codigo.gs que esta app necesita
+  const gsViejo = () => S.loaded && S.versionGs < VERSION_GS;
   const nuevoId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const limpiarMov = t => { const o = { ...t }; delete o.anio; delete o.mes; delete o._sinGuardar; return o; };
   async function reintentar() {
@@ -867,6 +877,47 @@ body.locked .period { visibility: hidden; }
     return `<section class="block"><h2>Préstamos de tus ahorros</h2><div class="loans">${cards}</div></section>`;
   }
 
+  // Resumen en cascada: arranca en lo que traes, suma ingresos, resta fijos, variables, ahorros
+  // (y pagos de préstamos) y termina en lo disponible. Cada barra se puede tocar.
+  function cascada(r, c, mesNombre) {
+    const pasos = [];
+    if (Math.abs(r.traes) > 0.005) pasos.push({ k: 'traes', n: 'Traes', v: r.traes, total: true, color: 'var(--other)' });
+    pasos.push({ k: 'ingreso', n: 'Ingresos', v: r.ingreso, color: 'var(--s-ing)', tipo: 'Ingreso' });
+    pasos.push({ k: 'fijos', n: 'Fijos', v: -r.fijos, color: 'var(--s-fijos)', tipo: 'Gastos Fijos' });
+    pasos.push({ k: 'variables', n: 'Variables', v: -r.variables, color: 'var(--s-var)', tipo: 'Gastos Variables' });
+    pasos.push({ k: 'ahorros', n: 'Ahorros', v: -r.ahorros, color: 'var(--s-aho)', tipo: 'Ahorros' });
+    if (Math.abs(r.prestamos) > 0.005) pasos.push({ k: 'prestamos', n: 'Préstamos', v: -r.prestamos, color: 'var(--s-deu)', tipo: 'Deudas' });
+    pasos.push({ k: 'disponible', n: 'Te queda', v: r.disponible, total: true, color: r.disponible < 0 ? 'var(--neg)' : 'var(--accent)' });
+    let run = 0; const niveles = [0];
+    for (const p of pasos) { if (p.total) { p.y0 = 0; p.y1 = p.v; run = p.v; } else { p.y0 = run; p.y1 = run + p.v; run = p.y1; } niveles.push(p.y0, p.y1); }
+    const W = 340, H = 220, L = 6, Rm = 6, T = 22, B = 34;
+    const hi = Math.max(...niveles), lo = Math.min(...niveles);
+    if (Math.abs(hi - lo) < 0.005) return `<div class="card"><div class="empty"><span>Sin movimientos en ${c} en ${mesNombre}.</span></div></div>`;
+    const sy = v => T + (H - T - B) * (hi - v) / (hi - lo);
+    const bw = (W - L - Rm) / pasos.length, w = Math.min(36, bw * 0.62);
+    let g = `<line x1="${L}" x2="${W - Rm}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--line)" stroke-width="1"/>`;
+    pasos.forEach((p, i) => {
+      const cx = L + bw * i + bw / 2, x = cx - w / 2, top = sy(Math.max(p.y0, p.y1)), bot = sy(Math.min(p.y0, p.y1));
+      const alto = Math.max(1.5, bot - top), sube = p.total ? p.v >= 0 : p.v >= 0;
+      const etiqueta = Math.abs(p.v) < 0.005 ? '0' : (p.total ? (p.v < 0 ? '−' : '') : p.v >= 0 ? '+' : '−') + compact(Math.abs(p.v), c);
+      // La cifra va encima de las barras que suben y debajo de las que bajan; si abajo no cabe, va dentro de la barra.
+      const dentro = !sube && bot + 13 > H - B - 2 && alto >= 18;
+      const ly = sube ? top - 6 : dentro ? bot - 6 : bot + 12;
+      if (i < pasos.length - 1) { const nx = L + bw * (i + 1) + bw / 2 - w / 2; g += `<line x1="${x + w}" x2="${nx}" y1="${sy(p.y1)}" y2="${sy(p.y1)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2 3"/>`; }
+      g += `<g ${p.tipo ? `data-gotipo="${p.tipo}" style="cursor:pointer"` : ''}><rect x="${L + bw * i}" y="${T - 16}" width="${bw}" height="${H - T + 16}" fill="transparent"/>
+        <rect x="${x}" y="${top}" width="${w}" height="${alto}" rx="4" fill="${p.color}"><title>${esc(p.n)}: ${esc(fmt(p.v, c))}</title></rect>
+        <text x="${cx}" y="${Math.min(H - B - 2, Math.max(12, ly))}" text-anchor="middle" class="cv" ${dentro ? 'style="fill:#fff"' : ''}>${esc(etiqueta)}</text>
+        <text x="${cx}" y="${H - B + 16}" text-anchor="middle" class="cn">${esc(p.n)}</text></g>`;
+    });
+    const pctI = v => r.ingreso > 0.005 ? Math.round(v / r.ingreso * 100) + ' %' : '—';
+    return `<div class="chart cascada"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Resumen de ${mesNombre} en ${c}: ${pasos.map(p => p.n + ' ' + fmt(p.v, c)).join(', ')}">${g}</svg>
+      ${r.ingreso <= 0.005 ? `<div class="cascada-pie"><span class="muted">Sin ingresos en ${c} este mes: los gastos salieron de lo que traías.</span></div>` : `<div class="cascada-pie">
+        <span><span class="dot" style="background:var(--s-fijos)"></span>Fijos <b>${pctI(r.fijos)}</b></span>
+        <span><span class="dot" style="background:var(--s-var)"></span>Variables <b>${pctI(r.variables)}</b></span>
+        <span><span class="dot" style="background:var(--s-aho)"></span>Ahorro <b>${pctI(r.ahorros)}</b></span>
+        <span class="muted">del ingreso</span></div>`}</div>`;
+  }
+
   function viewMes() {
     const k = ym(S.year, S.month);
     const R = Object.fromEntries(CURS.map(c => [c, mensual(S.all, S.year, S.month, c, S.settings, S.saldos)]));
@@ -907,8 +958,11 @@ body.locked .period { visibility: hidden; }
         return `<td class="${Math.abs(v) < 0.005 ? 'zero' : signed && v < 0 ? 'neg' : ''}">${fmt(v, c)}${opts.pct ? pctIng(v, c) : ''}</td>`;
       }).join('')}</tr>`;
     const hayTraes = CURS.some(c => Math.abs(R[c].traes) > 0.005), hayAho = CURS.some(c => R[c].prestadoMes > 0.005 || R[c].devueltoMes > 0.005);
-    const resumenMes = `<section class="block"><h2>Resumen del mes</h2>
-      <div class="card tight scrollx"><table class="tbl num tap resumen">${head3(MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1))}<tbody>
+    const mesNom = MONTHS[S.month - 1];
+    const resumenMes = `<section class="block"><div class="sechead"><h2>Resumen del mes</h2>${curSeg('Moneda del resumen')}</div>
+      ${cascada(R[S.cur], S.cur, mesNom)}
+      <div class="note">Toca una barra para ver esos movimientos.${R[S.cur].prestadoMes > 0.005 ? ` Incluye ${fmt(R[S.cur].prestadoMes, S.cur)} que tomaste de tus ahorros.` : ''}</div></section>`;
+    const tablaResumen = `<div class="card tight scrollx"><table class="tbl num tap resumen">${head3(MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1))}<tbody>
         ${hayTraes ? fila('Traes de ' + ant, 'traes', { nota: 'Saldo en débito', signed: true }) : ''}
         ${fila('Ingresos', 'ingreso', { color: 'var(--s-ing)', tipo: 'Ingreso' })}
         ${fila('Gastos fijos', 'fijos', { color: 'var(--s-fijos)', tipo: 'Gastos Fijos', pct: true })}
@@ -920,12 +974,12 @@ body.locked .period { visibility: hidden; }
         ${fila('Balance del mes', 'balance', { cls: 'strong', signed: true })}
         ${fila('Disponible', 'disponible', { cls: 'total', signed: true, nota: hayTraes ? 'Lo que traes + balance' : '' })}
       </tbody></table></div>
-      <div class="note">Balance = ingresos − gastos − ahorros${hasPrest ? ' − préstamos' : ''}. Ingresos sin reembolsos ni retiros de ahorro; ahorros = aportes − retiros. Toca una fila con › para ver sus movimientos.</div></section>`;
+      <div class="note" style="padding-inline:8px">Balance = ingresos − gastos − ahorros${hasPrest ? ' − préstamos' : ''}. Ingresos sin reembolsos ni retiros de ahorro; ahorros = aportes − retiros. Toca una fila con › para ver sus movimientos.</div>`;
     return `<div class="heros" id="heros">${heroes}</div>
       <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
       ${total ? resumenMes : ''}
       ${total ? '' : `<div class="card" style="margin-top:12px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o desliza hacia la derecha para ver meses anteriores.</span></div></div>`}
-${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
+${gsViejo() ? `<section class="block"><div class="notice warn" style="display:block"><b>Actualiza el programa de Google.</b> El que tienes pegado en tu hoja es una versión anterior: los préstamos de tus ahorros no se guardan. Pega el archivo <b>Codigo.gs</b> de Descargas en Extensiones → Apps Script y haz Implementar → Gestionar implementaciones → ✏️ → Nueva versión.</div></section>` : ''}${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
@@ -933,6 +987,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
         <div class="card">${recent.map(txRow).join('')}</div></section>` : ''}
       <div class="accs">
+      ${total ? acc('cifras', 'Cifras del resumen', 'COP y USD', tablaResumen) : ''}
       ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) ? '' : seccionPrestamos(R)}
       ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
           ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
@@ -1248,13 +1303,14 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       data.id = edit ? tx.id : nuevoId();
       store.set('lastTipo', st.tipo); store.set('lastMedio', st.medio); store.set('lastCur', st.moneda); store.set('lastImp', st.impuesto);
       close(); guardarMov(data);
+      if (data.prestamo && gsViejo()) setTimeout(() => toast('Ojo: tu programa de Google está desactualizado y no guardará la marca de préstamo. Actualízalo (ver aviso en Mes).', 7000), 2600);
       toast(edit ? 'Cambios guardados' : `Anotado: ${fmt(Math.abs(monto), st.moneda)} en ${st.categoria}`);
     });
   }
 
   /* ---------- eventos ---------- */
   document.addEventListener('click', async e => {
-    const b = e.target.closest('button, [data-month], tr[data-fcat], tr[data-gotipo]'); if (!b || b.closest('#sheetRoot')) return;
+    const b = e.target.closest('button, [data-month], tr[data-fcat], [data-gotipo]'); if (!b || b.closest('#sheetRoot')) return;
     const d = b.dataset;
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
     if (d.gotipo) { S.fType = d.gotipo; S.fCur = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }

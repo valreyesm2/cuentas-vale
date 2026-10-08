@@ -33,6 +33,7 @@ const COL = { fecha: 1, tipo: 2, categoria: 3, monto: 4, impuesto: 5, medio: 6, 
 const N_COLS = 12;
 const TITULOS_APP = ['ID', 'REEMBOLSO DE', 'EXTRAORDINARIO', 'PRÉSTAMO AHORROS'];
 const TIPOS = ['Ingreso', 'Gastos Fijos', 'Gastos Variables', 'Ahorros', 'Deudas'];
+const VERSION = 3; // la app avisa si el programa pegado en la hoja es más viejo
 
 /* ---------- instalación ---------- */
 function configurar() {
@@ -172,7 +173,7 @@ function cargar_() {
     if (pr) t.prestamo = pr;
     return t;
   });
-  return { movimientos, categorias: categorias_(), ajustes: leerJson_('AJUSTES', {}), saldos: leerJson_('SALDOS', {}) };
+  return { version: VERSION, movimientos, categorias: categorias_(), ajustes: leerJson_('AJUSTES', {}), saldos: leerJson_('SALDOS', {}) };
 }
 
 function guardarMovs_(movs) {
