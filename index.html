@@ -209,6 +209,12 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 .sw-line { display: inline-block; width: 14px; height: 3px; border-radius: 2px; }
 .readout.card { padding: 10px 14px; }
 input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90px; font-size: 13.5px; }
+body.locked .fab, body.locked nav.tabs { display: none; }
+.lock { display: grid; justify-items: center; gap: 12px; text-align: center; padding-block: 48px 24px; max-width: 340px; margin: 0 auto; }
+.lock h2 { font-size: 22px; }
+.lock-ic { color: var(--accent); }
+.pin { width: 200px; text-align: center; font-size: 34px; letter-spacing: .6em; padding: 12px 0 12px .6em; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); font-variant-numeric: tabular-nums; }
+.pin:focus-visible { outline: 2px solid var(--accent); }
 </style>
 </head>
 <body>
@@ -444,6 +450,43 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     history.replaceState(null, '', location.pathname);
   }
   const CONN = store.get('conexion', null); // { url, clave } guardado solo en este dispositivo
+
+  /* ---------- PIN del dispositivo ---------- */
+  // El PIN no sale del dispositivo: se guarda solo su huella (SHA-256 con sal). 5 intentos fallidos desconectan el dispositivo.
+  const LOCK = { locked: false, mode: 'abrir', first: '', msg: '' };
+  const MAX_FALLOS = 5;
+  async function huella(pin, salt) {
+    const data = new TextEncoder().encode(salt + ':' + pin);
+    if (crypto.subtle) return [...new Uint8Array(await crypto.subtle.digest('SHA-256', data))].map(b => b.toString(16).padStart(2, '0')).join('');
+    let h = 0; for (const b of data) h = (h * 31 + b) >>> 0; return String(h);
+  }
+  function olvidarDispositivo(aviso) {
+    try { ['cv.conexion', 'cv.cache', 'cv.pin', 'cv.pinFallos'].forEach(k => localStorage.removeItem(k)); if (aviso) localStorage.setItem('cv.aviso', JSON.stringify(aviso)); } catch {}
+    location.reload();
+  }
+  function bloquear(mode, msg = '') { Object.assign(LOCK, { locked: true, mode, first: '', msg }); render(); }
+  async function recibirPin(pin) {
+    if (LOCK.mode === 'crear') { Object.assign(LOCK, { mode: 'confirmar', first: pin, msg: '' }); return render(); }
+    if (LOCK.mode === 'confirmar') {
+      if (pin !== LOCK.first) return bloquear('crear', 'Los PIN no coinciden. Escríbelo de nuevo.');
+      const salt = crypto.getRandomValues ? [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16)).join('') : String(Math.random());
+      store.set('pin', { salt, hash: await huella(pin, salt) }); store.set('pinFallos', 0);
+      LOCK.locked = false; render(); toast('PIN guardado'); return;
+    }
+    const guardado = store.get('pin', null);
+    if (guardado && await huella(pin, guardado.salt) === guardado.hash) { store.set('pinFallos', 0); LOCK.locked = false; render(); return; }
+    const fallos = (store.get('pinFallos', 0) || 0) + 1; store.set('pinFallos', fallos);
+    if (fallos >= MAX_FALLOS) return olvidarDispositivo('Demasiados intentos con el PIN. Por seguridad se desconectó este dispositivo: conéctalo de nuevo con tu clave.');
+    bloquear('abrir', `PIN incorrecto. Te ${MAX_FALLOS - fallos === 1 ? 'queda 1 intento' : `quedan ${MAX_FALLOS - fallos} intentos`}.`);
+  }
+  function viewPin() {
+    const titulo = LOCK.mode === 'crear' ? 'Crea un PIN de 4 dígitos' : LOCK.mode === 'confirmar' ? 'Repite tu PIN' : 'Escribe tu PIN';
+    const nota = LOCK.mode === 'abrir' ? 'Tus cuentas están bloqueadas en este dispositivo.' : 'Se pedirá cada vez que abras la app en este dispositivo. No se guarda en ningún otro lado.';
+    return `<section class="lock"><svg class="lock-ic" aria-hidden="true" viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg><h2>${titulo}</h2><div class="note">${nota}</div>
+      <input id="pinIn" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="${titulo}">
+      <div class="err" role="alert">${esc(LOCK.msg)}</div>
+      ${LOCK.mode === 'abrir' ? '<button type="button" class="chip" id="olvidePin">Olvidé mi PIN</button>' : ''}</section>`;
+  }
   const isReady = () => S.loaded;
   const setSync = txt => { $('#syncState').textContent = txt; };
   async function api(accion, data = {}) {
@@ -779,6 +822,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
 
   function viewConectar() {
     return `<section class="block"><h2>Conecta tu hoja de Google</h2>
+      ${store.get('aviso', null) ? `<div class="notice warn">${esc(store.get('aviso', ''))}</div>` : ''}
       <div class="note">Esto se hace una sola vez en cada dispositivo. La dirección y la clave quedan guardadas solo aquí.</div>
       <form class="card" id="connForm" style="padding:14px;display:grid;gap:12px">
         <div class="field"><label for="c-url">Dirección de la aplicación web de Apps Script</label><input class="inp" id="c-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></div>
@@ -818,7 +862,8 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
         <button type="button" class="btn" id="showQr">Mostrar código QR</button>
         <div id="qrBox" class="card" hidden style="padding:16px;justify-items:center;display:grid;gap:8px"><div id="qr" style="background:#fff;padding:12px;border-radius:8px"></div><span class="note">Se oculta al salir de Ajustes.</span></div></section>
       <section class="block"><h2>Este dispositivo</h2>
-        <div class="note">Conectado a tu hoja de Google. Si desconectas, tendrás que volver a escribir la dirección y la clave.</div>
+        <div class="note">Conectado a tu hoja de Google y protegido con PIN. Si desconectas, tendrás que volver a escribir la dirección y la clave.</div>
+        <button type="button" class="btn" id="cambiarPin">Cambiar PIN</button>
         <button type="button" class="btn danger" id="desconectar" style="flex:none">Desconectar este dispositivo</button></section>`;
   }
 
@@ -826,7 +871,9 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     $('#periodLabel').textContent = S.tab === 'anio' ? String(S.year) : `${MONTHS[S.month - 1]} ${S.year}`;
     document.querySelectorAll('nav.tabs [data-tab]').forEach(b => b.dataset.tab === S.tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
     const v = $('#view');
+    document.body.classList.toggle('locked', !CONN || LOCK.locked);
     if (!CONN) { v.innerHTML = viewConectar(); return; }
+    if (LOCK.locked) { v.innerHTML = viewPin(); setTimeout(() => $('#pinIn')?.focus(), 30); return; }
     if (!isReady()) { v.innerHTML = `<div class="card"><div class="empty"><b>Cargando tus cuentas…</b><span>Aquí verás tu balance del mes en COP y USD, el desglose por categoría y tus últimos movimientos.</span></div></div>`; return; }
     const ae = document.activeElement, focusId = ae?.id, caret = ae?.selectionStart;
     if (ae && ae.dataset?.saldo) return; // no redibujar mientras escribe un saldo
@@ -980,16 +1027,23 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
       $('#qr').innerHTML = ''; new QRCode($('#qr'), { text: link, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
       box.hidden = false; b.textContent = 'Ocultar código QR'; return;
     }
+    if (b.id === 'cambiarPin') { bloquear('crear'); return; }
+    if (b.id === 'olvidePin') {
+      if (!b.classList.contains('confirm')) { b.classList.add('confirm'); b.textContent = 'Se desconectará este dispositivo. Toca otra vez'; return; }
+      olvidarDispositivo('Vuelve a conectar este dispositivo con tu clave y crea un PIN nuevo.'); return;
+    }
     if (b.id === 'exportJson') {
       descargar(`cuentas-vale-respaldo-${todayStr()}.json`, JSON.stringify({ movimientos: S.all.map(limpiarMov), ajustes: S.settings, saldos: S.saldos }, null, 1), 'application/json');
     }
     if (b.id === 'desconectar') {
       if (!b.classList.contains('confirm')) { b.classList.add('confirm'); b.textContent = '¿Seguro? Toca otra vez'; return; }
-      try { localStorage.removeItem('cv.conexion'); localStorage.removeItem('cv.cache'); } catch {}
-      location.reload();
+      olvidarDispositivo();
     }
   });
-  document.addEventListener('input', e => { if (e.target.id === 'q') { S.q = e.target.value; render(); } });
+  document.addEventListener('input', e => {
+    if (e.target.id === 'q') { S.q = e.target.value; render(); }
+    if (e.target.id === 'pinIn') { const v = e.target.value.replace(/\D/g, '').slice(0, 4); e.target.value = v; if (v.length === 4) { e.target.disabled = true; recibirPin(v); } }
+  });
   document.addEventListener('change', async e => {
     const el = e.target, d = el.dataset || {};
     if (el.id === 'importFile' && el.files?.[0]) {
@@ -1032,6 +1086,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
         const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ clave, accion: 'cargar' }) });
         const j = await r.json();
         if (!j.ok) throw Object.assign(new Error(j.error), { code: j.error });
+        try { localStorage.removeItem('cv.aviso'); } catch {}
         store.set('conexion', { url, clave }); store.set('cache', { movimientos: j.movimientos, ajustes: j.ajustes, saldos: j.saldos, categorias: j.categorias });
         location.reload();
       } catch (er) {
@@ -1050,10 +1105,17 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
 
   /* ---------- arranque ---------- */
   if (CONN) {
+    LOCK.locked = true; LOCK.mode = store.get('pin', null) ? 'abrir' : 'crear';
     const cache = store.get('cache', null);
     if (cache) applyData(cache);
     render(); cargar();
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && pendientes === 0) cargar(); });
+    // Se vuelve a pedir el PIN si la app estuvo en segundo plano más de un minuto.
+    let ocultaDesde = 0;
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') { ocultaDesde = Date.now(); return; }
+      if (store.get('pin', null) && !LOCK.locked && ocultaDesde && Date.now() - ocultaDesde > 60000) bloquear('abrir');
+      if (pendientes === 0) cargar();
+    });
   } else { setSync('Sin conectar'); render(); }
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
