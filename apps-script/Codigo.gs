@@ -67,6 +67,7 @@ function doPost(e) {
       case 'borrarMov': return conBloqueo_(() => { const borrado = borrarMov_(req.id); SpreadsheetApp.flush(); return salida_({ ok: true, borrado }); });
       case 'guardarAjustes': return conBloqueo_(() => { guardarJson_('AJUSTES', req.ajustes || {}); return salida_({ ok: true }); });
       case 'guardarSaldo': return conBloqueo_(() => { guardarSaldo_(req.mes, req.COP, req.USD); return salida_({ ok: true }); });
+      case 'diagnostico': return salida_({ ok: true, validacion: diagnostico_() });
       default: return salida_({ ok: false, error: 'accion' });
     }
   } catch (err) {
@@ -138,6 +139,7 @@ function categorias_() {
 /* ---------- acciones ---------- */
 function cargar_() {
   const h = hoja_(HOJA_LOG);
+  if (PropertiesService.getScriptProperties().getProperty('VALIDACION_REPARADA') !== '2') repararValidacionCategoria();
   asignarIds_(h);
   const movimientos = filas_(h).map(r => {
     const v = r.v;
@@ -191,19 +193,33 @@ function escribirFila_(h, fila, valores, id, extras, conservarMonto) {
   h.getRange(fila, COL.impuesto, 1, 4).setValues([valores.slice(4, 8)]);
   h.getRange(fila, COL.id, 1, 3).setValues([[id].concat(extras)]);
   SpreadsheetApp.flush();
-  ponerCategoria_(h.getRange(fila, COL.categoria), valores[2]);
+  ponerCategoria_(h, fila, valores[2]);
 }
 
-// La lista desplegable de CATEGORIA depende de la pestaña DROPDOWN, que Google recalcula con
-// retraso, y la regla está en «rechazar»: Google rechaza la categoría al aplicar los cambios.
-// Por eso la categoría se escribe quitando la regla de esa celda un instante y poniéndola
-// de nuevo, idéntica. La regla de la hoja queda como estaba.
-function ponerCategoria_(celda, valor) {
+// La lista desplegable de CATEGORIA es dependiente: cada fila mira su propia fila de la pestaña
+// DROPDOWN, que Google recalcula con retraso, y la regla está en «rechazar». Por eso la categoría
+// se escribe sin regla y luego se le copia la validación de otra fila, como al copiar y pegar a
+// mano: Google ajusta la referencia a la fila correcta y el desplegable queda igual que en el resto.
+function ponerCategoria_(h, fila, valor) {
+  const celda = h.getRange(fila, COL.categoria);
   if (String(celda.getValue()) === String(valor)) return;
-  const regla = celda.getDataValidation();
-  if (regla) celda.clearDataValidations();
+  celda.clearDataValidations();
   celda.setValue(valor);
-  if (regla) celda.setDataValidation(regla);
+  copiarValidacion_(h, fila, 1);
+}
+
+function copiarValidacion_(h, fila, n) {
+  const origen = fila === PRIMERA_FILA ? PRIMERA_FILA + 1 : PRIMERA_FILA;
+  h.getRange(origen, COL.categoria).copyTo(h.getRange(fila, COL.categoria, n, 1), SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+}
+
+// Deja toda la columna CATEGORIA con la misma validación de la primera fila (se ejecuta sola una vez;
+// también la puedes ejecutar a mano si alguna celda queda con el desplegable raro).
+function repararValidacionCategoria() {
+  const h = hoja_(HOJA_LOG);
+  const n = h.getMaxRows() - PRIMERA_FILA;
+  if (n > 0) copiarValidacion_(h, PRIMERA_FILA + 1, n);
+  PropertiesService.getScriptProperties().setProperty('VALIDACION_REPARADA', '2');
 }
 
 function borrarMov_(id) {
@@ -212,6 +228,18 @@ function borrarMov_(id) {
   if (!r) return false;
   h.deleteRow(r.fila);
   return true;
+}
+
+// Solo lectura: qué lista desplegable tiene la celda CATEGORIA de la primera fila y de las últimas.
+function diagnostico_() {
+  const h = hoja_(HOJA_LOG);
+  const ult = h.getLastRow();
+  return [PRIMERA_FILA, PRIMERA_FILA + 1, ult - 2, ult - 1, ult].filter((f, i, a) => f >= PRIMERA_FILA && a.indexOf(f) === i).map(f => {
+    const v = h.getRange(f, COL.categoria).getDataValidation();
+    if (!v) return { fila: f, regla: null };
+    const args = v.getCriteriaValues().map(a => a && a.getA1Notation ? a.getSheet().getName() + '!' + a.getA1Notation() : String(a));
+    return { fila: f, valor: String(h.getRange(f, COL.categoria).getValue()), tipo: String(v.getCriteriaType()), lista: args, rechaza: !v.getAllowInvalid() };
+  });
 }
 
 function guardarSaldo_(mes, cop, usd) {
