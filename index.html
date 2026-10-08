@@ -261,7 +261,9 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   }
   // Retiro de ahorros: un ahorro negativo. Los registros viejos de "Gasto de Ahorros" como ingreso se leen igual.
   const isLegacyRetiro = t => t.tipo === 'Ingreso' && t.categoria === GASTO_AHORROS;
-  const isReembolso = t => t.tipo === 'Ingreso' && t.categoria === REEMBOLSO;
+  const isReembolso = t => t.tipo === 'Ingreso' && (!!t.reembolsaA || t.categoria === REEMBOLSO);
+  const tipoGasto = (cat, cfg) => (cfg?.categorias?.['Gastos Fijos'] || []).includes(cat) ? 'Gastos Fijos' : 'Gastos Variables';
+  const tipoRe = (t, cfg) => t.reembolsaTipo || tipoGasto(t.reembolsaA, cfg);
   const isExtra = (t, cfg) => GASTO.has(t.tipo) && t.categoria !== PAGO_TC && (t.extra === true || (cfg?.extraCats || []).includes(t.categoria));
   const isCompraTC = t => t.medio === CREDITO && t.tipo !== 'Deudas';
   const isPrestamo = t => t.tipo === 'Deudas' && t.categoria !== DEUDA_TC && t.categoria !== CREDITO;
@@ -274,7 +276,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     for (const t of L) {
       const v = Number(t.monto) || 0;
       if (isLegacyRetiro(t)) { add('Ahorros|' + RETIRO, -v); continue; }
-      if (isReembolso(t)) { reembolsos += v; if (t.reembolsaTipo && t.reembolsaA) add(t.reembolsaTipo + '|' + t.reembolsaA, -v); else add('Gastos Variables|Otros reembolsos', -v); continue; }
+      if (isReembolso(t)) { reembolsos += v; if (t.reembolsaA) add(tipoRe(t, cfg) + '|' + t.reembolsaA, -v); else add('Gastos Variables|Otros reembolsos', -v); continue; }
       add(t.tipo + '|' + t.categoria, v);
     }
     const byTipo = tipo => Object.entries(porCat).reduce((a, [k, v]) => k.startsWith(tipo + '|') ? a + v : a, 0);
@@ -360,11 +362,11 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   const IMP = [['No Aplica', 'No aplica'], ['Si', 'Sí'], ['No', 'No · pendiente']];
   const DEFAULT_SETTINGS = {
     categorias: {
-      'Ingreso': ['CEO US UNIVERSITY', 'SCCOT', 'CLEMI', 'Ingreso Independiente', 'Ingreso por Inversión', 'Regalo', 'Transferencia Entrante', 'Viáticos', 'Mono García', REEMBOLSO],
+      'Ingreso': ['CEO US UNIVERSITY', 'SCCOT', 'CLEMI', 'Ingreso Independiente', 'Ingreso por Inversión', 'Regalo', 'Gasto de Ahorros', 'Transferencia Entrante', 'Viáticos', 'Mono García'],
       'Gastos Fijos': ['Arriendo', 'Servicios Públicos', 'Internet', 'Plan de Celular', 'Seguro de Salud', 'Matrícula de la Universidad', 'Suscripción Gimnasio', 'Pago a TC', 'Pago Nomina'],
       'Gastos Variables': ['Mercado', 'Restaurantes', 'Ropa', 'Medicamentos', 'Entretenimiento', 'Regalos', 'Salón de Belleza', 'Decoración de la Casa', 'Viajes', 'Transporte', 'Empresa', 'Transferencia Saliente', 'Perfume y accesorios'],
-      'Ahorros': ['Fondo de Emergencia', 'Ahorro mi Casita', 'Fondo de Inversion', RETIRO],
-      'Deudas': ['Préstamo Personal', 'Préstamo Estudiantiles', 'Préstamo Empresarial'],
+      'Ahorros': ['Fondo de Emergencia', 'Ahorro mi Casita', 'Fondo de Inversion'],
+      'Deudas': ['Tarjeta de Crédito', 'Préstamo Personal', 'Préstamo Estudiantiles', 'Préstamo Empresarial', 'TC del Mes Pasado'],
     },
     medios: ['Tarjeta de Crédito', 'Tarjeta Débito', 'NA'],
     presupuesto: { COP: {}, USD: {} },
@@ -387,7 +389,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     cur: store.get('cur', 'USD'), tab: store.get('tab', 'mes'), showZeros: store.get('zeros', false),
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
-    fCur: 'all', fType: 'all', fPend: false, fCat: null, q: '', selMonth: null,
+    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, q: '', selMonth: null,
   };
 
   const $ = s => document.querySelector(s);
@@ -406,7 +408,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   const pad = n => String(n).padStart(2, '0');
   const ym = (y, m) => `${y}-${pad(m)}`;
   const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
-  const dayLabel = f => { const [y, m, d] = f.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: y !== S.year ? 'numeric' : undefined }); };
+  const dayLabel = f => { if (!f) return 'Sin fecha'; const [y, m, d] = f.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long', year: y !== S.year ? 'numeric' : undefined }); };
   const parseAmount = (s, cur) => {
     s = String(s ?? '').replace(/[^\d.,-]/g, '');
     if (!s) return NaN;
@@ -425,10 +427,6 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
         for (const [k2, v2] of Object.entries(v)) o[k][k2] = (v2 && typeof v2 === 'object' && !Array.isArray(v2)) ? { ...(o[k][k2] || {}), ...v2 } : v2;
       } else o[k] = v;
     }
-    const c = o.categorias;
-    c['Ingreso'] = (c['Ingreso'] || []).filter(x => x !== GASTO_AHORROS); if (!c['Ingreso'].includes(REEMBOLSO)) c['Ingreso'].push(REEMBOLSO);
-    c['Ahorros'] ||= []; if (!c['Ahorros'].includes(RETIRO)) c['Ahorros'].push(RETIRO);
-    c['Deudas'] = (c['Deudas'] || []).filter(x => x !== DEUDA_TC && x !== CREDITO);
     return o;
   };
 
@@ -459,6 +457,8 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   function applyData(d) {
     S.all = (d.movimientos || []).map(withDerived);
     S.settings = mergeSettings(d.ajustes || {});
+    if (d.categorias && Object.values(d.categorias).some(l => l.length)) S.settings.categorias = d.categorias;
+    S.categorias = d.categorias || null;
     S.saldos = d.saldos || {};
     S.loaded = true;
   }
@@ -466,7 +466,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     setSync('Actualizando…');
     try {
       const d = await api('cargar');
-      applyData(d); store.set('cache', { movimientos: d.movimientos, ajustes: d.ajustes, saldos: d.saldos });
+      applyData(d); store.set('cache', { movimientos: d.movimientos, ajustes: d.ajustes, saldos: d.saldos, categorias: d.categorias });
       setSync('Al día');
     } catch (e) {
       setSync(e.code === 'clave' ? 'Clave incorrecta' : 'Sin conexión · datos guardados en el celular');
@@ -479,7 +479,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   function enviar(accion, data, revertir, msgError) {
     pendientes++; setSync('Guardando…');
     writing = writing.then(() => api(accion, data)).then(() => {
-      if (--pendientes === 0) { setSync('Al día'); store.set('cache', { movimientos: S.all, ajustes: S.settings, saldos: S.saldos }); }
+      if (--pendientes === 0) { setSync('Al día'); store.set('cache', { movimientos: S.all, ajustes: S.settings, saldos: S.saldos, categorias: S.categorias }); }
     }, e => {
       pendientes--; revertir?.(); render(); setSync('Sin conexión');
       toast(msgError || 'No se pudo guardar. Revisa tu conexión e intenta de nuevo.'); console.warn(e);
@@ -490,7 +490,8 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   const limpiarMov = t => { const o = { ...t }; delete o.anio; delete o.mes; return o; };
   function saveSettings(next) {
     const prev = S.settings; S.settings = next; render();
-    enviar('guardarAjustes', { ajustes: JSON.parse(JSON.stringify(next)) }, () => { S.settings = prev; }, 'No se pudo guardar el ajuste');
+    const { categorias, ...sinCategorias } = next;
+    enviar('guardarAjustes', { ajustes: JSON.parse(JSON.stringify(sinCategorias)) }, () => { S.settings = prev; }, 'No se pudo guardar el ajuste');
   }
   function saveSaldo(mes, cur, val) {
     const prev = S.saldos;
@@ -652,6 +653,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     return `<div class="hero"><div class="eyebrow">Balance · ${MONTHS[S.month - 1]} ${S.year}</div></div>
       <div class="duo">${CURS.map(c => `<div class="bal"><span class="eyebrow">${c}</span><span class="v num ${R[c].balance < -0.005 ? 'neg' : ''}">${fmt(R[c].balance, c)}</span><span class="note">Ahorraste ${pct(R[c].tasaAhorro)} del ingreso</span></div>`).join('')}</div>
       ${total ? '' : `<div class="card" style="margin-top:10px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o usa ‹ para ver meses anteriores.</span></div></div>`}
+      ${S.all.some(t => !t.fecha) ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${S.all.filter(t => !t.fecha).length} movimiento(s) de tu hoja no tienen fecha y no se están contando</span><span>Ponles fecha ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><h2>Resumen</h2>
         <div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
@@ -696,10 +698,11 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
   function viewMovs() {
     const q = S.q.trim().toLowerCase();
     let list;
-    if (S.fCat) {
+    if (S.fSin) list = S.all.filter(t => !t.fecha);
+    else if (S.fCat) {
       const [tp, ca] = S.fCat.key.split('|');
       list = S.all.filter(t => (S.fCat.scope === 'year' ? t.anio === S.year : t.mes === ym(S.year, S.month)) &&
-        ((t.tipo === tp && t.categoria === ca) || (isReembolso(t) && t.reembolsaTipo === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
+        ((t.tipo === tp && t.categoria === ca) || (isReembolso(t) && tipoRe(t, S.settings) === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
     } else list = q ? S.all.filter(t => [t.categoria, t.detalle, t.tipo, t.medio, t.moneda, t.reembolsaA].join(' ').toLowerCase().includes(q)) : S.all.filter(t => t.mes === ym(S.year, S.month));
     const pendAll = S.all.filter(t => impVal(t) === 'No');
     if (S.fPend) list = (q || S.fCat) ? list.filter(t => impVal(t) === 'No') : pendAll;
@@ -712,13 +715,13 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
       html += txRow(t);
     }
     if (last) html += '</div>';
-    const scope = S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
+    const scope = S.fSin ? 'Movimientos sin fecha: tócalos para ponerles fecha' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
     const tot = CURS.filter(c => list.some(t => t.moneda === c)).map(c => {
       const L = list.filter(t => t.moneda === c);
       return `<tr><td>${c}</td><td>${fmt(L.filter(moneyIn).reduce((a, t) => a + Math.abs(t.monto), 0), c)}</td><td>${fmt(L.filter(t => !moneyIn(t)).reduce((a, t) => a + Number(t.monto), 0), c)}</td></tr>`;
     }).join('');
     return `<section class="block">
-      ${S.fCat ? `<button type="button" class="chip" data-clearcat="1" aria-pressed="true">${esc(S.fCat.key.split('|')[1])} ✕</button>` : `<input class="search" id="q" type="search" placeholder="Buscar: Glovo, Arriendo, Zara…" value="${esc(S.q)}" autocomplete="off">`}
+      ${S.fSin ? `<button type="button" class="chip" data-clearsin="1" aria-pressed="true">Sin fecha ✕</button>` : S.fCat ? `<button type="button" class="chip" data-clearcat="1" aria-pressed="true">${esc(S.fCat.key.split('|')[1])} ✕</button>` : `<input class="search" id="q" type="search" placeholder="Buscar: Glovo, Arriendo, Zara…" value="${esc(S.q)}" autocomplete="off">`}
       <div class="seg full" role="group" aria-label="Moneda">${[['all', 'Ambas'], ['COP', 'COP'], ['USD', 'USD']].map(([v, l]) => `<button type="button" data-fcur="${v}" aria-pressed="${S.fCur === v}">${l}</button>`).join('')}</div>
       <div class="chiprow" role="group" aria-label="Filtrar por tipo">
         <button type="button" class="chip" data-ftype="all" aria-pressed="${S.fType === 'all'}">Todos</button>
@@ -804,15 +807,12 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
       <div class="note">Opcional. Si una categoría pasa su tope, el monto sale en rojo en la pestaña Mes.</div>
       <div class="card">${gastoCats().map(([, ca], i) => `<div class="setrow"><label for="b${i}">${esc(ca)}</label>
         <input class="inp num" id="b${i}" data-budget="${esc(ca)}" inputmode="decimal" placeholder="Sin tope" value="${num(budget[ca])}"></div>`).join('')}</div></section>
-      ${TYPES.map(t => `<section class="block"><h2>${t.short}: categorías</h2>
-        <div class="cats">${cats(t.id).map(ca => [REEMBOLSO, RETIRO].includes(ca) ? `<span class="chip">${esc(ca)}</span>` : `<span class="chip">${esc(ca)}<button type="button" aria-label="Quitar ${esc(ca)}" data-rmcat="${esc(t.id)}" data-cat="${esc(ca)}">×</button></span>`).join('')}</div>
-        <form class="addcat" data-addcat="${t.id}"><input class="inp" id="add-${t.ab}" placeholder="Nueva categoría" autocomplete="off"><button type="submit">Agregar</button></form></section>`).join('')}
+      <section class="block"><h2>Categorías</h2>
+        <div class="note">Las categorías salen de la pestaña <strong>Setup</strong> de tu hoja. Para agregar o quitar una, edítala ahí y vuelve a abrir la app.</div></section>
       <section class="block"><h2>Respaldo</h2>
-        <div class="note">Tus datos viven en tu hoja de Google. Aquí puedes descargar una copia, o importar un respaldo (los movimientos con el mismo ID se actualizan, los nuevos se agregan).</div>
+        <div class="note">Tus datos viven en tu hoja «Presupuesto Mensual Vale 2026». Aquí puedes descargar una copia.</div>
         <div class="actions"><button type="button" class="btn" id="exportCsv">Descargar CSV</button><button type="button" class="btn" id="exportJson">Descargar respaldo</button></div>
-        <label class="btn" for="importFile" style="text-align:center;cursor:pointer">Importar respaldo (.json)</label>
-        <input type="file" id="importFile" accept=".json,application/json" hidden>
-        <div class="note" id="importState"></div></section>
+</section>
       <section class="block"><h2>Conectar otro dispositivo</h2>
         <div class="note">Escanea este código con la cámara del celular y la app queda conectada sin escribir la clave. No lo compartas: quien lo escanee puede ver tus cuentas.</div>
         <button type="button" class="btn" id="showQr">Mostrar código QR</button>
@@ -839,8 +839,8 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     const edit = !!tx;
     const legacy = tx && isLegacyRetiro(tx);
     const st = {
-      tipo: legacy ? 'Ahorros' : tx?.tipo || store.get('lastTipo', 'Gastos Variables'),
-      categoria: legacy ? RETIRO : tx?.categoria || '',
+      tipo: tx?.tipo || store.get('lastTipo', 'Gastos Variables'),
+      categoria: tx?.categoria || '',
       moneda: tx?.moneda || store.get('lastCur', 'USD'),
       medio: tx?.medio || store.get('lastMedio', 'Tarjeta de Crédito'),
       impuesto: tx ? impVal(tx) : store.get('lastImp', 'Si'),
@@ -853,15 +853,15 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
       const medios = [...new Set([...(S.settings.medios || []), ...(tx?.medio ? [tx.medio] : [])])];
       root.querySelector('#typePick').innerHTML = TYPES.map(t => `<button type="button" data-st-tipo="${t.id}" aria-pressed="${st.tipo === t.id}"><span class="dot" style="background:${t.color}"></span>${t.short.replace('Gastos ', '')}</button>`).join('');
       root.querySelector('#catPick').innerHTML = [...new Set([...list, ...(st.categoria && !list.includes(st.categoria) ? [st.categoria] : [])])].map(c => `<button type="button" class="chip" data-st-cat="${esc(c)}" aria-pressed="${st.categoria === c}">${esc(c)}</button>`).join('');
-      const isRe = st.tipo === 'Ingreso' && st.categoria === REEMBOLSO;
-      root.querySelector('#reField').hidden = !isRe;
-      if (isRe) root.querySelector('#rePick').innerHTML = gastoCats().map(([tp, c]) => `<button type="button" class="chip" data-st-re="${esc(tp + '|' + c)}" aria-pressed="${st.reembolsaA === c && st.reembolsaTipo === tp}">${esc(c)}</button>`).join('');
+      const isIng = st.tipo === 'Ingreso';
+      root.querySelector('#reField').hidden = !isIng;
+      if (isIng) root.querySelector('#rePick').innerHTML = `<button type="button" class="chip" data-st-re="|" aria-pressed="${!st.reembolsaA}">No, es ingreso</button>` + gastoCats().map(([tp, c]) => `<button type="button" class="chip" data-st-re="${esc(tp + '|' + c)}" aria-pressed="${st.reembolsaA === c}">${esc(c)}</button>`).join('');
       const isGasto = GASTO.has(st.tipo) && st.categoria !== PAGO_TC;
       const fixedExtra = (S.settings.extraCats || []).includes(st.categoria);
       root.querySelector('#exField').hidden = !isGasto;
       const ex = root.querySelector('#f-extra'); ex.checked = fixedExtra || st.extra; ex.disabled = fixedExtra;
       root.querySelector('#exHelp').textContent = fixedExtra ? `«${st.categoria}» siempre cuenta como extraordinario (lo cambias en Ajustes).` : 'Márcalo si no se repite cada mes.';
-      root.querySelector('#retHelp').textContent = st.categoria === RETIRO ? 'Se guarda como plata que sale de tus ahorros (resta del total ahorrado).' : '';
+      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como retiro de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
       root.querySelector('#curPick').innerHTML = CURS.map(c => `<button type="button" data-st-cur="${c}" aria-pressed="${st.moneda === c}">${c}</button>`).join('');
       root.querySelector('#medioPick').innerHTML = medios.map(m => `<button type="button" class="chip" data-st-medio="${esc(m)}" aria-pressed="${st.medio === m}">${esc(m === 'NA' ? 'No aplica' : m)}</button>`).join('');
       root.querySelector('#impPick').innerHTML = IMP.map(([v, l]) => `<button type="button" data-st-imp="${v}" aria-pressed="${st.impuesto === v}">${l}</button>`).join('');
@@ -871,16 +871,16 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     };
     const preview = () => { const n = parseAmount($('#f-monto').value, st.moneda); $('#amtPrev').textContent = Number.isFinite(n) && n !== 0 ? fmt(n, st.moneda) + ' ' + st.moneda : ''; };
     const defDate = S.month === now.getMonth() + 1 && S.year === now.getFullYear() ? todayStr() : ym(S.year, S.month) + '-01';
-    const startAmt = tx ? (st.categoria === RETIRO ? Math.abs(tx.monto) : tx.monto) : '';
+    const startAmt = tx ? tx.monto : '';
     root.innerHTML = `<div class="scrim" id="scrim"><form class="sheet" id="txForm" aria-label="${edit ? 'Editar movimiento' : 'Nuevo movimiento'}" novalidate>
       <div class="grab"></div>
       <div class="row between"><h3>${edit ? 'Editar movimiento' : 'Nuevo movimiento'}</h3><div class="seg" id="curPick" role="group" aria-label="Moneda"></div></div>
       <div class="field"><div class="amount"><span id="curSym">$</span><input id="f-monto" inputmode="decimal" placeholder="0" autocomplete="off" aria-label="Monto" value="${esc(String(startAmt))}"></div><div class="amount-preview num" id="amtPrev"></div></div>
       <div class="field"><span class="lab">Tipo</span><div class="typepick" id="typePick"></div></div>
       <div class="field"><span class="lab">Categoría</span><div class="chips" id="catPick"></div><div class="note" id="retHelp"></div></div>
-      <div class="field" id="reField" hidden><span class="lab">¿Qué gasto te reembolsaron?</span><div class="chips" id="rePick"></div><div class="note">Se resta de ese gasto y no cuenta como ingreso.</div></div>
+      <div class="field" id="reField" hidden><span class="lab">¿Es un reembolso de un gasto?</span><div class="chips" id="rePick"></div><div class="note">Si te devolvieron plata de un gasto, elige cuál: se resta de ese gasto y no cuenta como ingreso.</div></div>
       <div class="field"><label for="f-detalle">Detalles</label><input class="inp" id="f-detalle" placeholder="Ej: Compra en D1" autocomplete="off" value="${esc(tx?.detalle || '')}"></div>
-      <div class="field"><label for="f-fecha">Fecha</label><input class="inp" type="date" id="f-fecha" value="${esc(tx?.fecha || defDate)}"></div>
+      <div class="field"><label for="f-fecha">Fecha</label><input class="inp" type="date" id="f-fecha" value="${esc(tx ? tx.fecha : defDate)}"></div>
       <div class="field" id="exField" hidden><label class="toggle" for="f-extra">Gasto extraordinario<input type="checkbox" id="f-extra"></label><div class="note" id="exHelp"></div></div>
       <div class="field"><span class="lab">Impuesto</span><div class="seg full" id="impPick" role="group" aria-label="Impuesto"></div><div class="note" id="impHelp"></div></div>
       <div class="field"><span class="lab">Medio de pago</span><div class="chips" id="medioPick"></div></div>
@@ -919,13 +919,11 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
       const fecha = $('#f-fecha').value, err = $('#formErr');
       if (!Number.isFinite(monto) || monto === 0) { err.textContent = 'Escribe un monto.'; $('#f-monto').focus(); return; }
       if (!st.categoria) { err.textContent = 'Elige una categoría.'; return; }
-      const isRe = st.tipo === 'Ingreso' && st.categoria === REEMBOLSO;
-      if (isRe && !st.reembolsaA) { err.textContent = 'Elige qué gasto te reembolsaron.'; return; }
+      const isRe = st.tipo === 'Ingreso' && !!st.reembolsaA;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { err.textContent = 'Elige una fecha.'; return; }
-      if (st.categoria === RETIRO) monto = -Math.abs(monto);
       const data = { fecha, anio: Number(fecha.slice(0, 4)), mes: fecha.slice(0, 7), tipo: st.tipo, categoria: st.categoria, monto, moneda: st.moneda,
         medio: st.medio, impuesto: st.impuesto, detalle: $('#f-detalle').value.trim(), creado: tx?.creado || new Date().toISOString() };
-      if (isRe) { data.reembolsaA = st.reembolsaA; data.reembolsaTipo = st.reembolsaTipo; }
+      if (isRe) data.reembolsaA = st.reembolsaA;
       if (GASTO.has(st.tipo) && st.extra && !(S.settings.extraCats || []).includes(st.categoria)) data.extra = true;
       data.id = edit ? tx.id : nuevoId();
       store.set('lastTipo', st.tipo); store.set('lastMedio', st.medio); store.set('lastCur', st.moneda); store.set('lastImp', st.impuesto);
@@ -940,8 +938,10 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
     const d = b.dataset;
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
     if (d.clearcat) { S.fCat = null; render(); return; }
+    if (d.clearsin) { S.fSin = false; render(); return; }
+    if (d.sinfecha) { S.fSin = true; S.fCat = null; S.fPend = false; S.fType = 'all'; S.fCur = 'all'; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
     if (d.cur) { S.cur = d.cur; store.set('cur', S.cur); render(); return; }
-    if (d.tab) { S.tab = d.tab; if (d.tab !== 'movs') S.fCat = null; store.set('tab', S.tab); render(); window.scrollTo(0, 0); return; }
+    if (d.tab) { S.tab = d.tab; if (d.tab !== 'movs') { S.fCat = null; S.fSin = false; } store.set('tab', S.tab); render(); window.scrollTo(0, 0); return; }
     if (d.step) {
       const k = Number(d.step);
       if (S.tab === 'anio') { S.year += k; S.selMonth = null; render(); return; }
@@ -1032,7 +1032,7 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
         const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ clave, accion: 'cargar' }) });
         const j = await r.json();
         if (!j.ok) throw Object.assign(new Error(j.error), { code: j.error });
-        store.set('conexion', { url, clave }); store.set('cache', { movimientos: j.movimientos, ajustes: j.ajustes, saldos: j.saldos });
+        store.set('conexion', { url, clave }); store.set('cache', { movimientos: j.movimientos, ajustes: j.ajustes, saldos: j.saldos, categorias: j.categorias });
         location.reload();
       } catch (er) {
         btn.disabled = false; btn.textContent = 'Conectar';
