@@ -6,10 +6,12 @@
  * pestañas Mensual, Anual y los desplegables siguen funcionando igual. Las categorías salen
  * de la pestaña «Setup».
  *
- * Solo agrega tres columnas a la derecha de «Transactions Log», que ninguna fórmula usa:
- *   I  ID              (oculta; identifica cada fila para que la app edite la correcta)
- *   J  REEMBOLSO DE    (si un ingreso es el reembolso de un gasto, qué categoría)
- *   K  EXTRAORDINARIO  («Si» si ese gasto es extraordinario)
+ * Solo agrega columnas a la derecha de «Transactions Log», que ninguna fórmula usa:
+ *   I  ID                (oculta; identifica cada fila para que la app edite la correcta)
+ *   J  REEMBOLSO DE      (si un ingreso es el reembolso de un gasto, qué categoría)
+ *   K  EXTRAORDINARIO    («Si» si ese gasto es extraordinario)
+ *   L  PRÉSTAMO AHORROS  («Préstamo» o «Préstamo: <fondo>» si sacaste de tus ahorros y lo vas
+ *                         a devolver; «Devolución» si es un ahorro que repone ese préstamo)
  * Los ajustes de la app (cupo de la TC, topes, saldos reales) se guardan dentro de este
  * programa, no en la hoja.
  *
@@ -27,15 +29,15 @@ const HOJA_LOG = 'Transactions Log';
 const HOJA_SETUP = 'Setup';
 const FILA_TITULOS = 4;           // fila con FECHA, TIPO, CATEGORIA…
 const PRIMERA_FILA = 5;           // primera fila de movimientos
-const COL = { fecha: 1, tipo: 2, categoria: 3, monto: 4, impuesto: 5, medio: 6, moneda: 7, detalle: 8, id: 9, reembolsaA: 10, extra: 11 };
-const N_COLS = 11;
+const COL = { fecha: 1, tipo: 2, categoria: 3, monto: 4, impuesto: 5, medio: 6, moneda: 7, detalle: 8, id: 9, reembolsaA: 10, extra: 11, prestamo: 12 };
+const N_COLS = 12;
+const TITULOS_APP = ['ID', 'REEMBOLSO DE', 'EXTRAORDINARIO', 'PRÉSTAMO AHORROS'];
 const TIPOS = ['Ingreso', 'Gastos Fijos', 'Gastos Variables', 'Ahorros', 'Deudas'];
 
 /* ---------- instalación ---------- */
 function configurar() {
   const h = hoja_(HOJA_LOG);
-  if (h.getMaxColumns() < N_COLS) h.insertColumnsAfter(h.getMaxColumns(), N_COLS - h.getMaxColumns());
-  h.getRange(FILA_TITULOS, COL.id, 1, 3).setValues([['ID', 'REEMBOLSO DE', 'EXTRAORDINARIO']]).setFontWeight('bold');
+  asegurarColumnas_(h);
   asignarIds_(h);
   h.hideColumns(COL.id);
   const props = PropertiesService.getScriptProperties();
@@ -119,6 +121,13 @@ function filas_(h) {
   return out;
 }
 
+// Agrega las columnas de la app que falten (I a L) y sus títulos. No toca A a H.
+function asegurarColumnas_(h) {
+  if (h.getMaxColumns() < N_COLS) h.insertColumnsAfter(h.getMaxColumns(), N_COLS - h.getMaxColumns());
+  const tit = h.getRange(FILA_TITULOS, COL.id, 1, TITULOS_APP.length);
+  if (tit.getValues()[0].join('|') !== TITULOS_APP.join('|')) tit.setValues([TITULOS_APP]).setFontWeight('bold');
+}
+
 function asignarIds_(h) {
   filas_(h).forEach(r => { if (!r.v[COL.id - 1]) h.getRange(r.fila, COL.id).setValue(nuevoId_()); });
 }
@@ -139,6 +148,7 @@ function categorias_() {
 /* ---------- acciones ---------- */
 function cargar_() {
   const h = hoja_(HOJA_LOG);
+  asegurarColumnas_(h);
   if (PropertiesService.getScriptProperties().getProperty('VALIDACION_REPARADA') !== '2') repararValidacionCategoria();
   asignarIds_(h);
   const movimientos = filas_(h).map(r => {
@@ -158,6 +168,8 @@ function cargar_() {
     const re = String(v[COL.reembolsaA - 1]).trim();
     if (re) t.reembolsaA = re;
     if (String(v[COL.extra - 1]).trim().toLowerCase() === 'si') t.extra = true;
+    const pr = String(v[COL.prestamo - 1]).trim();
+    if (pr) t.prestamo = pr;
     return t;
   });
   return { movimientos, categorias: categorias_(), ajustes: leerJson_('AJUSTES', {}), saldos: leerJson_('SALDOS', {}) };
@@ -165,6 +177,7 @@ function cargar_() {
 
 function guardarMovs_(movs) {
   const h = hoja_(HOJA_LOG);
+  asegurarColumnas_(h);
   const filas = filas_(h);
   const porId = {};
   filas.forEach(r => { porId[String(r.v[COL.id - 1])] = r; });
@@ -173,7 +186,7 @@ function guardarMovs_(movs) {
     if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(String(t.fecha))) throw new Error('Falta la fecha');
     const fecha = Utilities.parseDate(t.fecha, zona_(), 'yyyy-MM-dd');
     const valores = [fecha, t.tipo, t.categoria, Number(t.monto) || 0, t.impuesto || 'No Aplica', t.medio || 'NA', t.moneda, t.detalle || ''];
-    const extras = [t.reembolsaA || '', t.extra === true ? 'Si' : ''];
+    const extras = [t.reembolsaA || '', t.extra === true ? 'Si' : '', /^(Préstamo|Devolución)/.test(String(t.prestamo || '')) ? String(t.prestamo) : ''];
     const actual = porId[String(t.id)];
     const conservarMonto = actual && Math.abs((Number(actual.v[COL.monto - 1]) || 0) - valores[3]) < 0.005;
     const fila = actual ? actual.fila : Math.max(h.getLastRow() + 1, PRIMERA_FILA);
@@ -191,7 +204,7 @@ function escribirFila_(h, fila, valores, id, extras, conservarMonto) {
   h.getRange(fila, COL.fecha, 1, 2).setValues([valores.slice(0, 2)]);
   if (!conservarMonto) h.getRange(fila, COL.monto).setValue(valores[3]); // si no cambió, se conserva la fórmula
   h.getRange(fila, COL.impuesto, 1, 4).setValues([valores.slice(4, 8)]);
-  h.getRange(fila, COL.id, 1, 3).setValues([[id].concat(extras)]);
+  h.getRange(fila, COL.id, 1, 1 + extras.length).setValues([[id].concat(extras)]);
   SpreadsheetApp.flush();
   ponerCategoria_(h, fila, valores[2]);
 }

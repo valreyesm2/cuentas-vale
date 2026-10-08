@@ -199,6 +199,7 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 .sechead { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .seg.full { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
 .seg.full button { padding: 9px 6px; }
+.seg.full.two-opt { grid-template-columns: 1fr 1fr; }
 .chiprow { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
 .chiprow .chip { flex: none; }
 .setrow { display: grid; grid-template-columns: 1fr 140px; gap: 8px; align-items: center; padding-block: 8px; border-bottom: 1px solid var(--line); }
@@ -275,6 +276,15 @@ details.acc .card { background: transparent; }
 .tx .ic { color: #fff; }
 .fab { box-shadow: 0 8px 22px rgb(61 42 32 / .28); }
 .tile, .bal, .card, .chart { box-shadow: 0 1px 0 rgb(61 42 32 / .04); }
+.loans { display: grid; gap: 10px; }
+.pill.loan-pill { background: color-mix(in oklab, var(--s-ing) 16%, transparent); color: var(--ink); }
+.loan { background: var(--surface); border-radius: var(--r); padding: 14px; display: grid; gap: 8px; }
+.loan-amt { font-family: var(--display); font-weight: 700; font-size: 22px; }
+.loan-amt.ok { color: var(--pos); font-size: 18px; }
+.plan { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 14px; }
+.plan select { width: auto; padding: 6px 10px; }
+.plan-res { color: var(--ink-2); }
+details.acc .actions, .loan .actions { flex-wrap: wrap; }
 body.locked .fab, body.locked nav.tabs { display: none; }
 body.locked .period { visibility: hidden; }
 .lock { display: grid; justify-items: center; gap: 12px; text-align: center; padding-block: 48px 24px; max-width: 340px; margin: 0 auto; }
@@ -395,6 +405,21 @@ body.locked .period { visibility: hidden; }
     return (Number(cfg?.tcInicial?.[cur]) || 0) + sumIf(L, isCompraTC) - sumIf(L, t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC);
   }
 
+  // Préstamos de tus ahorros: lo que sacaste de tus ahorros y vas a devolver, menos lo que ya devolviste.
+  const esPrestamo = t => /^Préstamo/.test(t.prestamo || '');
+  const esDevolucion = t => t.prestamo === 'Devolución';
+  const fondoDe = t => (String(t.prestamo || '').split(':')[1] || '').trim();
+  function prestamosAhorros(all, cur, hastaMes) {
+    const L = all.filter(t => t.moneda === cur && t.mes && (!hastaMes || t.mes <= hastaMes));
+    const abs = t => Math.abs(Number(t.monto) || 0);
+    const tomado = L.filter(esPrestamo).reduce((a, t) => a + abs(t), 0);
+    const devuelto = L.filter(esDevolucion).reduce((a, t) => a + abs(t), 0);
+    const porFondo = {};
+    L.filter(esPrestamo).forEach(t => { const f = fondoDe(t) || 'Sin fondo'; porFondo[f] = (porFondo[f] || 0) + abs(t); });
+    L.filter(esDevolucion).forEach(t => { const f = t.categoria || 'Sin fondo'; porFondo[f] = (porFondo[f] || 0) - abs(t); });
+    return { tomado, devuelto, deuda: tomado - devuelto, porFondo };
+  }
+
   function mensual(all, y, m, cur, cfg, saldos) {
     const k = ymOf(y, m);
     const r = totales(all.filter(t => t.mes === k && t.moneda === cur), cfg);
@@ -410,6 +435,10 @@ body.locked .period { visibility: hidden; }
     r.saldoAnteriorReal = Number.isFinite(realAnt);
     r.traes = cfg?.traerSaldo?.[cur] === false ? 0 : r.saldoAnterior;
     r.disponible = r.traes + r.balance;
+    const PA = prestamosAhorros(all, cur, k), Lm = all.filter(t => t.mes === k && t.moneda === cur);
+    r.debesAhorros = PA.deuda; r.tomadoAhorros = PA.tomado; r.devueltoAhorros = PA.devuelto; r.porFondo = PA.porFondo;
+    r.prestadoMes = Lm.filter(esPrestamo).reduce((a, t) => a + Math.abs(Number(t.monto) || 0), 0);
+    r.devueltoMes = Lm.filter(esDevolucion).reduce((a, t) => a + Math.abs(Number(t.monto) || 0), 0);
     return r;
   }
   function anual(all, y, cur, cfg, saldos) {
@@ -418,6 +447,7 @@ body.locked .period { visibility: hidden; }
     r.ahorrosAcum = sumIf(all.filter(t => t.anio <= y && t.moneda === cur), t => t.tipo === 'Ahorros') - sumIf(all.filter(t => t.anio <= y && t.moneda === cur), isLegacyRetiro);
     r.debito = saldoDebito(all, cur, fin, cfg, saldos);
     r.saldoTC = saldoTC(all, cur, fin, cfg);
+    r.debesAhorros = prestamosAhorros(all, cur, fin).deuda;
     return r;
   }
   // Promedio mensual por categoría de gasto en los meses anteriores (hasta 6) que tienen movimientos en esa moneda.
@@ -457,6 +487,7 @@ body.locked .period { visibility: hidden; }
     debito: { COP: { inicial: 0, restaAhorros: true }, USD: { inicial: 1123.25, restaAhorros: false } },
     extraCats: ['Viajes', 'Matrícula de la Universidad'],
     traerSaldo: { COP: true, USD: true },
+    planAhorros: { COP: 3, USD: 3 },
   };
   const MONTHS = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   const MON3 = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -472,7 +503,7 @@ body.locked .period { visibility: hidden; }
     cur: store.get('cur', 'USD'), tab: store.get('tab', 'mes'), showZeros: store.get('zeros', false),
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
-    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, categorias: null, open: store.get('open', {}),
+    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, fPrest: false, categorias: null, open: store.get('open', {}),
     q: '', selMonth: null,
     cola: store.get('cola', []), // movimientos que no se pudieron guardar en la hoja
   };
@@ -672,7 +703,8 @@ body.locked .period { visibility: hidden; }
       + (isExtra(t, S.settings) ? ' <span class="pill">Extraordinario</span>' : '')
       + (t.tipo === 'Deudas' && t.categoria === DEUDA_TC ? ' <span class="pill">Ya no se usa</span>' : '')
       + (t._sinGuardar ? ' <span class="pill warn">Sin guardar</span>' : '')
-      + (incompleto(t) ? ' <span class="pill warn">Incompleto</span>' : '');
+      + (incompleto(t) ? ' <span class="pill warn">Incompleto</span>' : '')
+      + (esPrestamo(t) ? ' <span class="pill loan-pill">Préstamo de ahorros</span>' : esDevolucion(t) ? ' <span class="pill loan-pill">Devolución a ahorros</span>' : '');
     return `<button type="button" class="tx" data-edit="${esc(t.id)}">
       <span class="ic" style="background:${ty.color}">${ty.ab}</span>
       <span class="t"><b>${esc(first)}</b><span>${esc(sub || t.tipo)}${pills}</span></span>
@@ -799,6 +831,31 @@ body.locked .period { visibility: hidden; }
       <div class="legend-list">${parts.map(p => `<button type="button" ${p.k ? `data-fcat="${esc(p.k)}" data-scope="${scope}"` : 'data-tab="movs"'}><span class="dot" style="background:${p.color}"></span><span class="n">${esc(p.name)}</span><span class="v num">${fmt(p.v, cur)}<small>${Math.round(p.v / total * 100)} %</small></span></button>`).join('')}</div></div>`;
   }
 
+  // Sección «Préstamos de tus ahorros»: cuánto debes, avance y plan de pago por moneda.
+  function seccionPrestamos(R) {
+    const curs = CURS.filter(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005);
+    const botones = c => `<div class="actions"><button type="button" class="btn" data-nuevo="prestamo" data-moneda="${c}">Tomar de mis ahorros</button><button type="button" class="btn primary" data-nuevo="devolucion" data-moneda="${c}">Devolver a mis ahorros</button></div>`;
+    if (!curs.length) return acc('prestamos', 'Préstamos de tus ahorros', 'Sin préstamos', `<div class="note" style="padding-inline:8px">Si sacas plata de tus ahorros para tener flujo y la vas a reponer, anótala como préstamo. Aquí verás cuánto le debes a tus ahorros y un plan para devolverlo.</div>${botones(S.cur)}`);
+    const plan = S.settings.planAhorros || {};
+    const cards = curs.map(c => {
+      const r = R[c], avance = r.tomadoAhorros > 0 ? Math.min(1, r.devueltoAhorros / r.tomadoAhorros) : 1;
+      const meses = Number(plan[c]) || 3, cuota = r.debesAhorros > 0 ? r.debesAhorros / meses : 0;
+      const fin = new Date(S.year, S.month - 1 + meses, 1);
+      const fondos = Object.entries(r.porFondo).filter(([f, v]) => v > 0.005 && f !== 'Sin fondo');
+      return `<div class="loan">
+        <div class="row between"><span class="eyebrow">${c}</span>${r.debesAhorros > 0.005 ? '' : '<span class="pill">Al día</span>'}</div>
+        <div class="loan-amt num ${r.debesAhorros > 0.005 ? '' : 'ok'}">${r.debesAhorros > 0.005 ? `Le debes ${fmt(r.debesAhorros, c)}` : r.debesAhorros < -0.005 ? `Devolviste ${fmt(-r.debesAhorros, c)} de más` : 'No le debes nada a tus ahorros'}</div>
+        <div class="bar" title="Devuelto"><i style="width:${(avance * 100).toFixed(1)}%;background:var(--s-ing)"></i></div>
+        <div class="note">Has devuelto ${fmt(r.devueltoAhorros, c)} de ${fmt(r.tomadoAhorros, c)} (${Math.round(avance * 100)} %)${fondos.length ? ` · ${fondos.map(([f, v]) => `${esc(f)}: ${fmt(v, c)}`).join(' · ')}` : ''}</div>
+        ${r.prestadoMes || r.devueltoMes ? `<div class="note">En ${MONTHS[S.month - 1]}: tomaste ${fmt(r.prestadoMes, c)} y devolviste ${fmt(r.devueltoMes, c)}.</div>` : ''}
+        ${r.debesAhorros > 0.005 ? `<div class="plan"><label for="plan-${c}">Devolverlo en</label>
+          <select id="plan-${c}" class="inp" data-plan="${c}">${[1, 2, 3, 4, 6, 9, 12, 18, 24].map(n => `<option value="${n}" ${n === meses ? 'selected' : ''}>${n} mes${n > 1 ? 'es' : ''}</option>`).join('')}</select>
+          <span class="plan-res">= <b class="num">${fmt(cuota, c)}</b> al mes, terminas en ${MONTHS[fin.getMonth()]} ${fin.getFullYear()}</span></div>` : ''}
+        ${botones(c)}</div>`;
+    }).join('');
+    return `<section class="block"><h2>Préstamos de tus ahorros</h2><div class="loans">${cards}</div></section>`;
+  }
+
   function viewMes() {
     const k = ym(S.year, S.month);
     const R = Object.fromEntries(CURS.map(c => [c, mensual(S.all, S.year, S.month, c, S.settings, S.saldos)]));
@@ -817,7 +874,7 @@ body.locked .period { visibility: hidden; }
         <div class="amt num ${r.disponible < -0.005 ? 'neg' : ''}" data-count="${r.disponible}" data-cur="${c}" data-key="disp-${c}">${fmt(r.disponible, c)}</div>
         <div class="split">${r.traes ? `Traes <b class="num">${fmt(r.traes, c)}</b> de ${ant} · ` : ''}balance del mes <b class="num">${fmt(r.balance, c)}</b></div>
         <div class="meter ${usado > 1 ? 'over' : ''}" title="Gastado sobre lo que tenías"><i style="width:${Math.min(100, Math.max(0, usado * 100)).toFixed(1)}%"></i></div>
-        <div class="split">Usaste ${Math.round(usado * 100)} % de lo que tenías para el mes</div>
+        <div class="split">Usaste ${Math.round(usado * 100)} % de lo que tenías para el mes${r.prestadoMes > 0.005 ? ` · incluye <b class="num">${fmt(r.prestadoMes, c)}</b> prestado de tus ahorros` : ''}</div>
         <div class="trio"><div><span>Entró</span><b class="num">${compact(r.ingreso, c)}</b></div><div><span>Gastaste</span><b class="num">${compact(r.gastado, c)}</b></div><div><span>Ahorraste</span><b class="num">${pct(r.tasaAhorro)}</b></div></div>
       </article>`;
     }).join('');
@@ -843,9 +900,11 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
+      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) ? seccionPrestamos(R) : ''}
       ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
         <div class="card">${recent.map(txRow).join('')}</div></section>` : ''}
       <div class="accs">
+      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) ? '' : seccionPrestamos(R)}
       ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
           ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
         </tbody></table></div><div class="note" style="padding-inline:8px">En ${S.cur}, contra tus últimos ${P.n} mes${P.n > 1 ? 'es' : ''}. ▲ gastaste más de lo normal, ▼ menos.</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
@@ -889,6 +948,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
     } else list = q ? S.all.filter(t => [t.categoria, t.detalle, t.tipo, t.medio, t.moneda, t.reembolsaA].join(' ').toLowerCase().includes(q)) : S.all.filter(t => t.mes === ym(S.year, S.month));
     const pendAll = S.all.filter(t => impVal(t) === 'No');
     if (S.fPend) list = (q || S.fCat) ? list.filter(t => impVal(t) === 'No') : pendAll;
+    if (S.fPrest) list = S.all.filter(t => esPrestamo(t) || esDevolucion(t));
     if (S.fCur !== 'all') list = list.filter(t => t.moneda === S.fCur);
     if (S.fType !== 'all') list = list.filter(t => t.tipo === S.fType);
     sortTx(list);
@@ -898,7 +958,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       html += txRow(t);
     }
     if (last) html += '</div>';
-    const scope = S.fSin ? 'Movimientos incompletos: tócalos para completarlos' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
+    const scope = S.fPrest ? 'Préstamos y devoluciones de tus ahorros, todos los meses' : S.fSin ? 'Movimientos incompletos: tócalos para completarlos' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
     const tot = CURS.filter(c => list.some(t => t.moneda === c)).map(c => {
       const L = list.filter(t => t.moneda === c);
       return `<tr><td>${c}</td><td>${fmt(L.filter(moneyIn).reduce((a, t) => a + Math.abs(t.monto), 0), c)}</td><td>${fmt(L.filter(t => !moneyIn(t)).reduce((a, t) => a + Number(t.monto), 0), c)}</td></tr>`;
@@ -910,7 +970,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
         <button type="button" class="chip" data-ftype="all" aria-pressed="${S.fType === 'all'}">Todos</button>
         ${TYPES.map(t => `<button type="button" class="chip" data-ftype="${t.id}" aria-pressed="${S.fType === t.id}"><span class="dot" style="background:${t.color}"></span>${t.short}</button>`).join('')}
       </div>
-      <div class="chiprow"><button type="button" class="chip" data-pending="toggle" aria-pressed="${S.fPend}">Impuesto pendiente · ${pendAll.length}</button></div>
+      <div class="chiprow"><button type="button" class="chip" data-pending="toggle" aria-pressed="${S.fPend}">Impuesto pendiente · ${pendAll.length}</button><button type="button" class="chip" data-fprest="1" aria-pressed="${S.fPrest}">Préstamos de ahorros · ${S.all.filter(t => esPrestamo(t) || esDevolucion(t)).length}</button></div>
       <div class="sub">${esc(scope)} · ${list.length} movimiento${list.length === 1 ? '' : 's'}</div>
       ${tot ? `<div class="card tight scrollx"><table class="tbl num"><thead><tr><th>Moneda</th><th>Entradas</th><th>Salidas</th></tr></thead><tbody>${tot}</tbody></table></div>` : ''}
       ${list.length ? html : `<div class="card"><div class="empty"><b>Nada por aquí</b><span>${S.fPend ? 'No tienes impuestos pendientes por agregar.' : q ? 'Prueba con otra palabra.' : 'No hay movimientos con ese filtro.'}</span></div></div>`}
@@ -936,6 +996,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
         <div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
           <tr><td>Cuenta débito<small>Saldo estimado al cierre</small></td>${CURS.map(c => cell(R[c].debito, c, true)).join('')}</tr>
           <tr><td>Tarjeta de crédito<small>Saldo pendiente al cierre</small></td>${CURS.map(c => cell(R[c].saldoTC, c)).join('')}</tr>
+          <tr><td>Le debes a tus ahorros<small>Préstamos menos devoluciones, al cierre</small></td>${CURS.map(c => cell(R[c].debesAhorros, c)).join('')}</tr>
         </tbody></table></div></section>
       <section class="block"><div class="sechead"><h2>Gráficas en ${cur}</h2>${curSeg('Moneda de las gráficas')}</div>
         <div class="chart"><h3 class="ch">Gastos e ingreso mes a mes</h3>
@@ -1043,7 +1104,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
   }
 
   /* ---------- anotar / editar ---------- */
-  function openSheet(tx) {
+  function openSheet(tx, preset = null) {
     const edit = !!tx;
     const legacy = tx && isLegacyRetiro(tx);
     const st = {
@@ -1054,7 +1115,16 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       impuesto: tx ? impVal(tx) : store.get('lastImp', 'Si'),
       extra: tx?.extra === true,
       reembolsaA: tx?.reembolsaA || '', reembolsaTipo: tx?.reembolsaTipo || '',
+      prestamo: tx ? esPrestamo(tx) : false, fondo: tx ? fondoDe(tx) : '', devolucion: tx ? esDevolucion(tx) : false,
     };
+    // Atajos desde «Préstamos de tus ahorros»
+    if (preset === 'prestamo') Object.assign(st, { tipo: 'Ingreso', categoria: GASTO_AHORROS, prestamo: true, medio: 'Tarjeta Débito', impuesto: 'No Aplica', moneda: S.cur });
+    if (preset === 'devolucion') {
+      const r = mensual(S.all, S.year, S.month, S.cur, S.settings, S.saldos);
+      const fondo = Object.entries(r.porFondo).filter(([f, v]) => v > 0.005 && cats('Ahorros').includes(f)).sort((a, b) => b[1] - a[1])[0]?.[0] || cats('Ahorros')[0] || '';
+      Object.assign(st, { tipo: 'Ahorros', categoria: fondo, devolucion: true, medio: 'Tarjeta Débito', impuesto: 'No Aplica', moneda: S.cur });
+      st.cuota = r.debesAhorros > 0 ? Math.round(r.debesAhorros / (Number(S.settings.planAhorros?.[S.cur]) || 3) * 100) / 100 : '';
+    }
     const root = $('#sheetRoot');
     const draw = () => {
       const list = cats(st.tipo);
@@ -1062,14 +1132,23 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       root.querySelector('#typePick').innerHTML = TYPES.map(t => `<button type="button" data-st-tipo="${t.id}" aria-pressed="${st.tipo === t.id}"><span class="dot" style="background:${t.color}"></span>${t.short.replace('Gastos ', '')}</button>`).join('');
       root.querySelector('#catPick').innerHTML = [...new Set([...list, ...(st.categoria && !list.includes(st.categoria) ? [st.categoria] : [])])].map(c => `<button type="button" class="chip" data-st-cat="${esc(c)}" aria-pressed="${st.categoria === c}">${esc(c)}</button>`).join('');
       const isIng = st.tipo === 'Ingreso';
-      root.querySelector('#reField').hidden = !isIng;
+      const esRetiro = isIng && st.categoria === GASTO_AHORROS;
+      root.querySelector('#reField').hidden = !isIng || esRetiro;
+      root.querySelector('#prField').hidden = !esRetiro;
+      root.querySelector('#devField').hidden = st.tipo !== 'Ahorros';
+      if (esRetiro) {
+        root.querySelector('#prPick').innerHTML = `<button type="button" data-st-pr="1" aria-pressed="${st.prestamo}">Sí, es un préstamo</button><button type="button" data-st-pr="0" aria-pressed="${!st.prestamo}">No, lo gasté</button>`;
+        root.querySelector('#fondoWrap').hidden = !st.prestamo;
+        root.querySelector('#fondoPick').innerHTML = cats('Ahorros').map(f => `<button type="button" class="chip" data-st-fondo="${esc(f)}" aria-pressed="${st.fondo === f}">${esc(f)}</button>`).join('');
+      }
+      if (st.tipo === 'Ahorros') root.querySelector('#devPick').innerHTML = `<button type="button" data-st-dev="1" aria-pressed="${st.devolucion}">Sí, es una devolución</button><button type="button" data-st-dev="0" aria-pressed="${!st.devolucion}">No, es ahorro nuevo</button>`;
       if (isIng) root.querySelector('#rePick').innerHTML = `<button type="button" class="chip" data-st-re="|" aria-pressed="${!st.reembolsaA}">No, es ingreso</button>` + gastoCats().map(([tp, c]) => `<button type="button" class="chip" data-st-re="${esc(tp + '|' + c)}" aria-pressed="${st.reembolsaA === c}">${esc(c)}</button>`).join('');
       const isGasto = GASTO.has(st.tipo) && st.categoria !== PAGO_TC;
       const fixedExtra = (S.settings.extraCats || []).includes(st.categoria);
       root.querySelector('#exField').hidden = !isGasto;
       const ex = root.querySelector('#f-extra'); ex.checked = fixedExtra || st.extra; ex.disabled = fixedExtra;
       root.querySelector('#exHelp').textContent = fixedExtra ? `«${st.categoria}» siempre cuenta como extraordinario (lo cambias en Ajustes).` : 'Márcalo si no se repite cada mes.';
-      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como retiro de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
+      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como plata que sacas de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
       root.querySelector('#curPick').innerHTML = CURS.map(c => `<button type="button" data-st-cur="${c}" aria-pressed="${st.moneda === c}">${c}</button>`).join('');
       root.querySelector('#medioPick').innerHTML = medios.map(m => `<button type="button" class="chip" data-st-medio="${esc(m)}" aria-pressed="${st.medio === m}">${esc(m === 'NA' ? 'No aplica' : m)}</button>`).join('');
       root.querySelector('#impPick').innerHTML = IMP.map(([v, l]) => `<button type="button" data-st-imp="${v}" aria-pressed="${st.impuesto === v}">${l}</button>`).join('');
@@ -1079,7 +1158,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
     };
     const preview = () => { const n = parseAmount($('#f-monto').value, st.moneda); $('#amtPrev').textContent = Number.isFinite(n) && n !== 0 ? fmt(n, st.moneda) + ' ' + st.moneda : ''; };
     const defDate = S.month === now.getMonth() + 1 && S.year === now.getFullYear() ? todayStr() : ym(S.year, S.month) + '-01';
-    const startAmt = tx && Number(tx.monto) ? tx.monto : '';
+    const startAmt = tx && Number(tx.monto) ? tx.monto : (st.cuota || '');
     root.innerHTML = `<div class="scrim" id="scrim"><form class="sheet" id="txForm" aria-label="${edit ? 'Editar movimiento' : 'Nuevo movimiento'}" novalidate>
       <div class="grab"></div>
       <div class="row between"><h3>${edit ? 'Editar movimiento' : 'Nuevo movimiento'}</h3><div class="seg" id="curPick" role="group" aria-label="Moneda"></div></div>
@@ -1087,7 +1166,11 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       <div class="field"><span class="lab">Tipo</span><div class="typepick" id="typePick"></div></div>
       <div class="field"><span class="lab">Categoría</span><div class="chips" id="catPick"></div><div class="note" id="retHelp"></div></div>
       <div class="field" id="reField" hidden><span class="lab">¿Es un reembolso de un gasto?</span><div class="chips" id="rePick"></div><div class="note">Si te devolvieron plata de un gasto, elige cuál: se resta de ese gasto y no cuenta como ingreso.</div></div>
-      <div class="field"><label for="f-detalle">Detalles</label><input class="inp" id="f-detalle" placeholder="Ej: Compra en D1" autocomplete="off" value="${esc(tx?.detalle || '')}"></div>
+      <div class="field" id="prField" hidden><span class="lab">¿Lo vas a devolver a tus ahorros?</span><div class="seg full two-opt" id="prPick" role="group" aria-label="Préstamo"></div>
+        <div id="fondoWrap" hidden style="display:grid;gap:6px;margin-top:6px"><span class="note">¿De qué ahorro salió? (opcional)</span><div class="chips" id="fondoPick"></div></div>
+        <div class="note">Si es un préstamo, la app lo suma a lo que le debes a tus ahorros.</div></div>
+      <div class="field" id="devField" hidden><span class="lab">¿Es para devolver lo que tomaste de tus ahorros?</span><div class="seg full two-opt" id="devPick" role="group" aria-label="Devolución"></div><div class="note">Una devolución resta de lo que le debes a tus ahorros.</div></div>
+      <div class="field"><label for="f-detalle">Detalles</label><input class="inp" id="f-detalle" placeholder="Ej: Compra en D1" autocomplete="off" value="${esc(tx?.detalle || (preset === 'prestamo' ? 'Préstamo de mis ahorros' : preset === 'devolucion' ? 'Devolución a mis ahorros' : ''))}"></div>
       <div class="field"><label for="f-fecha">Fecha</label><input class="inp" type="date" id="f-fecha" value="${esc(tx ? tx.fecha : defDate)}"></div>
       <div class="field" id="exField" hidden><label class="toggle" for="f-extra">Gasto extraordinario<input type="checkbox" id="f-extra"></label><div class="note" id="exHelp"></div></div>
       <div class="field"><span class="lab">Impuesto</span><div class="seg full" id="impPick" role="group" aria-label="Impuesto"></div><div class="note" id="impHelp"></div></div>
@@ -1111,6 +1194,9 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       else if (d.stCur) { st.moneda = d.stCur; draw(); }
       else if (d.stMedio) { st.medio = d.stMedio; draw(); }
       else if (d.stImp) { st.impuesto = d.stImp; draw(); }
+      else if (d.stPr) { st.prestamo = d.stPr === '1'; draw(); }
+      else if (d.stFondo) { st.fondo = st.fondo === d.stFondo ? '' : d.stFondo; draw(); }
+      else if (d.stDev) { st.devolucion = d.stDev === '1'; draw(); }
     });
     if (edit) {
       let armed = false;
@@ -1127,12 +1213,14 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       const fecha = $('#f-fecha').value, err = $('#formErr');
       if (!Number.isFinite(monto) || monto === 0) { err.textContent = 'Escribe un monto.'; $('#f-monto').focus(); return; }
       if (!st.categoria) { err.textContent = 'Elige una categoría.'; return; }
-      const isRe = st.tipo === 'Ingreso' && !!st.reembolsaA;
+      const isRe = st.tipo === 'Ingreso' && st.categoria !== GASTO_AHORROS && !!st.reembolsaA;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) { err.textContent = 'Elige una fecha.'; return; }
       const data = { fecha, anio: Number(fecha.slice(0, 4)), mes: fecha.slice(0, 7), tipo: st.tipo, categoria: st.categoria, monto, moneda: st.moneda,
         medio: st.medio, impuesto: st.impuesto, detalle: $('#f-detalle').value.trim(), creado: tx?.creado || new Date().toISOString() };
       if (isRe) data.reembolsaA = st.reembolsaA;
       if (GASTO.has(st.tipo) && st.extra && !(S.settings.extraCats || []).includes(st.categoria)) data.extra = true;
+      if (st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS && st.prestamo) data.prestamo = 'Préstamo' + (st.fondo ? ': ' + st.fondo : '');
+      if (st.tipo === 'Ahorros' && st.devolucion) data.prestamo = 'Devolución';
       data.id = edit ? tx.id : nuevoId();
       store.set('lastTipo', st.tipo); store.set('lastMedio', st.medio); store.set('lastCur', st.moneda); store.set('lastImp', st.impuesto);
       close(); guardarMov(data);
@@ -1146,6 +1234,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
     const d = b.dataset;
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
     if (d.reintentar) { reintentar(); return; }
+    if (d.fprest) { S.fPrest = !S.fPrest; render(); return; }
     if (d.clearcat) { S.fCat = null; render(); return; }
     if (d.clearsin) { S.fSin = false; render(); return; }
     if (d.sinfecha) { S.fSin = true; S.fCat = null; S.fPend = false; S.fType = 'all'; S.fCur = 'all'; S.tab = 'movs'; render(); window.scrollTo(0, 0); return; }
@@ -1174,9 +1263,10 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
       const next = structuredClone(S.settings); next.categorias[d.rmcat] = cats(d.rmcat).filter(c => c !== d.cat);
       saveSettings(next); toast(`Quitada: ${d.cat}. Tus movimientos anteriores no cambian.`); return;
     }
+    if (d.nuevo) { if (d.moneda) { S.cur = d.moneda; store.set('cur', S.cur); } openSheet(null, d.nuevo); return; }
     if (b.id === 'fab') { if (CONN && S.loaded) openSheet(); else toast('Primero conecta la app con tu hoja de Google.'); return; }
     if (b.id === 'exportCsv') {
-      const cols = [['fecha', 'FECHA'], ['tipo', 'TIPO'], ['categoria', 'CATEGORIA'], ['monto', 'MONTO'], ['impuesto', 'IMPUESTO'], ['medio', 'MEDIO DE PAGO'], ['moneda', 'MONEDA'], ['detalle', 'DETALLES'], ['reembolsaA', 'REEMBOLSO DE'], ['extra', 'EXTRAORDINARIO']];
+      const cols = [['fecha', 'FECHA'], ['tipo', 'TIPO'], ['categoria', 'CATEGORIA'], ['monto', 'MONTO'], ['impuesto', 'IMPUESTO'], ['medio', 'MEDIO DE PAGO'], ['moneda', 'MONEDA'], ['detalle', 'DETALLES'], ['reembolsaA', 'REEMBOLSO DE'], ['extra', 'EXTRAORDINARIO'], ['prestamo', 'PRÉSTAMO AHORROS']];
       const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const rows = [...S.all].sort((a, b) => a.fecha.localeCompare(b.fecha)).map(t => cols.map(([c]) => q(c === 'impuesto' ? impVal(t) : c === 'extra' ? (isExtra(t, S.settings) ? 'Si' : '') : t[c])).join(','));
       descargar(`cuentas-vale-${todayStr()}.csv`, '\ufeff' + [cols.map(c => c[1]).join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
@@ -1232,6 +1322,7 @@ ${S.cola.length ? `<section class="block"><button type="button" class="notice wa
   });
   document.addEventListener('change', async e => {
     const el = e.target, d = el.dataset || {};
+    if (d.plan) { const next = structuredClone(S.settings); next.planAhorros = { ...(next.planAhorros || {}), [d.plan]: Number(el.value) }; saveSettings(next); return; }
     if (el.id === 'importFile' && el.files?.[0]) {
       const st = $('#importState');
       try {
