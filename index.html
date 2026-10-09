@@ -611,6 +611,13 @@ body.locked .period { visibility: hidden; }
     history.replaceState(null, '', location.pathname);
   }
   const CONN = store.get('conexion', null); // { url, clave } guardado solo en este dispositivo
+  // Ruta rápida: #anotar, #anotar-gasto, #anotar-ingreso o #anotar-ahorro abren el formulario de una vez
+  // (después del PIN). Sirve para accesos directos del centro de control o de la pantalla de inicio.
+  const RUTAS = { 'anotar': 'anotar', 'anotar-gasto': 'gasto', 'anotar-ingreso': 'ingreso', 'anotar-ahorro': 'ahorro' };
+  let RUTA = null;
+  const leerRuta = () => { const r = RUTAS[location.hash.slice(1)]; if (r) { RUTA = r; history.replaceState(null, '', location.pathname); } };
+  leerRuta();
+  window.addEventListener('hashchange', () => { leerRuta(); render(); });
 
   /* ---------- PIN del dispositivo ---------- */
   // El PIN no sale del dispositivo: se guarda solo su huella (SHA-256 con sal). 5 intentos fallidos desconectan el dispositivo.
@@ -678,7 +685,7 @@ body.locked .period { visibility: hidden; }
     setSync('Actualizando…');
     try {
       const d = await api('cargar');
-      applyData(d); store.set('cache', { movimientos: d.movimientos, ajustes: d.ajustes, saldos: d.saldos, categorias: d.categorias, version: d.version });
+      applyData(d); S.fresco = true; store.set('cache', { movimientos: d.movimientos, ajustes: d.ajustes, saldos: d.saldos, categorias: d.categorias, version: d.version });
       setSync('Al día');
     } catch (e) {
       setSync(e.code === 'clave' ? 'Clave incorrecta' : 'Sin conexión · datos guardados en el celular');
@@ -699,7 +706,7 @@ body.locked .period { visibility: hidden; }
     return writing;
   }
   const VERSION_GS = 3; // versión de apps-script/Codigo.gs que esta app necesita
-  const gsViejo = () => S.loaded && S.versionGs < VERSION_GS;
+  const gsViejo = () => S.fresco && S.versionGs < VERSION_GS;
   const nuevoId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const limpiarMov = t => { const o = { ...t }; delete o.anio; delete o.mes; delete o._sinGuardar; return o; };
   async function reintentar() {
@@ -1151,10 +1158,11 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   function viewConectar() {
     return `<section class="block"><img class="lock-logo" src="logo.png" alt="Logo VR" width="112" height="112" style="justify-self:center"><h2>Conecta tu hoja de Google</h2>
       ${store.get('aviso', null) ? `<div class="notice warn">${esc(store.get('aviso', ''))}</div>` : ''}
-      <div class="note">Esto se hace una sola vez en cada dispositivo. La dirección y la clave quedan guardadas solo aquí.</div>
+      <div class="note">Se hace una sola vez en cada dispositivo. <b>En iPhone, la app de la pantalla de inicio y Safari son dispositivos distintos</b>: hay que conectar cada uno.</div>
+      <div class="note">Lo más fácil: en el computador ve a Ajustes → <b>Copiar enlace de conexión</b> y pégalo aquí abajo (con el mismo Apple ID, lo que copias en el Mac se pega en el iPhone). Así no necesitas escribir la clave.</div>
       <form class="card" id="connForm" style="padding:14px;display:grid;gap:12px">
-        <div class="field"><label for="c-url">Dirección de la aplicación web de Apps Script</label><input class="inp" id="c-url" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></div>
-        <div class="field"><label for="c-clave">Clave</label><input class="inp" id="c-clave" type="password" autocomplete="current-password"></div>
+        <div class="field"><label for="c-url">Enlace de conexión o dirección de Apps Script</label><input class="inp" id="c-url" placeholder="Pega aquí el enlace" autocomplete="off" inputmode="url"></div>
+        <div class="field"><label for="c-clave">Clave <span class="note">(no hace falta si pegaste el enlace de conexión)</span></label><input class="inp" id="c-clave" type="password" autocomplete="current-password"></div>
         <div class="err" id="connErr" role="alert"></div>
         <button type="submit" class="btn primary" id="connBtn">Conectar</button>
       </form></section>`;
@@ -1188,8 +1196,12 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
 </section>
       <section class="block"><h2>Conectar otro dispositivo</h2>
         <div class="note">Escanea este código con la cámara del celular y la app queda conectada sin escribir la clave. No lo compartas: quien lo escanee puede ver tus cuentas.</div>
-        <button type="button" class="btn" id="showQr">Mostrar código QR</button>
+        <div class="actions"><button type="button" class="btn" id="copiarEnlace">Copiar enlace de conexión</button><button type="button" class="btn" id="showQr">Mostrar código QR</button></div>
+        <textarea id="enlaceTxt" class="inp" rows="3" readonly hidden></textarea>
         <div id="qrBox" class="card" hidden style="padding:16px;justify-items:center;display:grid;gap:8px"><div id="qr" style="background:#fff;padding:12px;border-radius:8px"></div><span class="note">Se oculta al salir de Ajustes.</span></div></section>
+      <section class="block"><h2>Ruta rápida</h2>
+        <div class="note">Estos enlaces abren la app directo en el formulario de anotar. Úsalos en un atajo del centro de control del iPhone (app Atajos → «Abrir URL») o mantén presionado el ícono de la app en Android.</div>
+        <div class="card" style="padding:6px 14px">${[['anotar-gasto', 'Anotar gasto'], ['anotar-ingreso', 'Anotar ingreso'], ['anotar-ahorro', 'Anotar ahorro'], ['anotar', 'Anotar (lo último que usaste)']].map(([h, l]) => `<div class="setrow"><span>${l}<div class="note num">${esc(location.origin)}/#${h}</div></span><button type="button" class="chip" data-copiar="${esc(location.origin + '/#' + h)}">Copiar</button></div>`).join('')}</div></section>
       <section class="block"><h2>Este dispositivo</h2>
         <div class="note">Conectado a tu hoja de Google y protegido con PIN. Si desconectas, tendrás que volver a escribir la dirección y la clave.</div>
         <button type="button" class="btn" id="cambiarPin">Cambiar PIN</button>
@@ -1218,6 +1230,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     document.body.classList.toggle('locked', !CONN || LOCK.locked);
     if (!CONN) { v.innerHTML = viewConectar(); return; }
     if (LOCK.locked) { v.innerHTML = viewPin(); setTimeout(() => $('#pinIn')?.focus(), 30); return; }
+    if (RUTA && S.loaded && !$('#sheetRoot').innerHTML) { const r = RUTA; RUTA = null; setTimeout(() => openSheet(null, r), 50); }
     if (!isReady()) { v.innerHTML = `<div class="card"><div class="empty"><b>Cargando tus cuentas…</b><span>Aquí verás tu balance del mes en COP y USD, el desglose por categoría y tus últimos movimientos.</span></div></div>`; return; }
     const ae = document.activeElement, focusId = ae?.id, caret = ae?.selectionStart;
     if (ae && ae.dataset?.saldo) return; // no redibujar mientras escribe un saldo
@@ -1245,6 +1258,9 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       prestamo: tx ? esPrestamo(tx) : false, fondo: tx ? fondoDe(tx) : '', devolucion: tx ? esDevolucion(tx) : false,
     };
     // Atajos desde «Préstamos de tus ahorros»
+    if (preset === 'gasto') Object.assign(st, { tipo: 'Gastos Variables', categoria: '' });
+    if (preset === 'ingreso') Object.assign(st, { tipo: 'Ingreso', categoria: '' });
+    if (preset === 'ahorro') Object.assign(st, { tipo: 'Ahorros', categoria: '' });
     if (preset === 'prestamo') Object.assign(st, { tipo: 'Ingreso', categoria: GASTO_AHORROS, prestamo: true, medio: 'Tarjeta Débito', impuesto: 'No Aplica', moneda: S.cur });
     if (preset === 'devolucion') {
       const r = mensual(S.all, S.year, S.month, S.cur, S.settings, S.saldos);
@@ -1407,6 +1423,13 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       const rows = [...S.all].sort((a, b) => a.fecha.localeCompare(b.fecha)).map(t => cols.map(([c]) => q(c === 'impuesto' ? impVal(t) : c === 'extra' ? (isExtra(t, S.settings) ? 'Si' : '') : t[c])).join(','));
       descargar(`cuentas-vale-${todayStr()}.csv`, '\ufeff' + [cols.map(c => c[1]).join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
     }
+    if (d.copiar) { try { await navigator.clipboard.writeText(d.copiar); toast('Enlace copiado'); } catch { toast(d.copiar, 6000); } return; }
+    if (b.id === 'copiarEnlace') {
+      const link = location.origin + location.pathname + '#conectar=' + btoa(unescape(encodeURIComponent(JSON.stringify(CONN))));
+      try { await navigator.clipboard.writeText(link); toast('Enlace copiado. Pégalo en la app del celular.', 4000); }
+      catch { const t = $('#enlaceTxt'); t.hidden = false; t.value = link; t.focus(); t.select(); toast('Copia el enlace que quedó seleccionado'); }
+      return;
+    }
     if (b.id === 'showQr') {
       const box = $('#qrBox');
       if (!box.hidden) { box.hidden = true; $('#qr').innerHTML = ''; b.textContent = 'Mostrar código QR'; return; }
@@ -1492,13 +1515,16 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   document.addEventListener('submit', async e => {
     if (e.target.id === 'connForm') {
       e.preventDefault();
-      const url = $('#c-url').value.trim(), clave = $('#c-clave').value.trim(), err = $('#connErr'), btn = $('#connBtn');
+      let url = $('#c-url').value.trim(), clave = $('#c-clave').value.trim();
+      const err = $('#connErr'), btn = $('#connBtn');
+      const enlace = url.match(/#conectar=([A-Za-z0-9+/=_-]+)/);
+      if (enlace) { try { const c = JSON.parse(decodeURIComponent(escape(atob(enlace[1])))); url = c.url; clave = c.clave; } catch { err.textContent = 'El enlace de conexión está incompleto. Cópialo de nuevo.'; return; } }
       if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec$/.test(url)) { err.textContent = 'La dirección debe empezar por https://script.google.com/macros/s/ y terminar en /exec.'; return; }
       if (!clave) { err.textContent = 'Escribe la clave.'; return; }
       btn.disabled = true; btn.textContent = 'Conectando…'; err.textContent = '';
       try {
         const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ clave, accion: 'cargar' }) });
-        const j = await r.json();
+        const j = JSON.parse(await r.text());
         if (!j.ok) throw Object.assign(new Error(j.error), { code: j.error });
         try { localStorage.removeItem('cv.aviso'); } catch {}
         store.set('conexion', { url, clave }); store.set('cache', { movimientos: j.movimientos, ajustes: j.ajustes, saldos: j.saldos, categorias: j.categorias });
