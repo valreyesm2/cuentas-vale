@@ -7,6 +7,7 @@ Presupuesto personal en COP y USD, como app web instalable en el celular.
 - Retiros de ahorro se escriben como en la hoja: Ingreso / «Gasto de Ahorros»; la app los cuenta como ahorro negativo. Reembolsos: Ingreso con «REEMBOLSO DE» lleno.
 - **Conexión:** la URL `/exec` y la clave viven solo en `localStorage` de cada dispositivo (`cv.conexion`). Nunca deben ir al repositorio, que es público. Los respaldos `.json` con datos tampoco.
 - **Lógica:** ver el bloque `/* ---------- lógica ---------- */` en `index.html`. Balance = ingreso − fijos − variables − ahorros − préstamos. «Pago a TC» no suma en fijos; la deuda de la TC se calcula (compras con TC − pagos), no se resta del balance. Reembolsos (`categoria: Reembolso`, `reembolsaA/reembolsaTipo`) restan del gasto indicado. Retiro de ahorros = ahorro negativo. «Gasto de Ahorros» como ingreso es un formato viejo que se lee como retiro.
+- **Lo que se le muestra arriba** es caja, no balance: «En tu cuenta débito» = saldo débito (traes + ingresos − lo pagado con débito, incluidos los pagos a la TC; las compras con TC no salen hasta pagarlas), o el saldo real si lo anotó. «Libre después de pagar» = débito − deuda TC − deuda con sus ahorros. El balance del mes (que sí cuenta las compras con TC) queda como dato de análisis.
 
 ## Probar y publicar
 

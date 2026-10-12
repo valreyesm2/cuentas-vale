@@ -1,5 +1,5 @@
 // Primero la red (para ver siempre la última versión); si no hay conexión, la copia guardada.
-const CACHE = 'cuentas-vale-v17';
+const CACHE = 'cuentas-vale-v18';
 self.addEventListener('install', e => { self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(self.clients.claim()); });
 self.addEventListener('fetch', e => {
