@@ -342,6 +342,8 @@ details.acc .actions, .loan .actions { flex-wrap: wrap; }
 .porpagar .pp.libre { border-top: 1px solid var(--hero-line); padding-top: 6px; color: var(--hero-ink); font-weight: 600; }
 .porpagar .pp.libre b { font-size: 17px; } .porpagar .pp b.neg { color: #ffb4a6; }
 .rb-totals > div.aho { background: color-mix(in oklab, var(--s-aho) 12%, var(--surface)); }
+.rb-totals > div.full { grid-column: 1 / -1; }
+.porpagar.aho { background: rgb(255 214 140 / .14); }
 .meter.tc i { background: repeating-linear-gradient(135deg, #f2c49b 0 4px, #ffe3c9 4px 7px); }
 .rb-totals span { font-size: 12.5px; color: var(--muted); }
 .rb-totals b { font-family: var(--display); font-size: 18px; overflow-wrap: anywhere; }
@@ -513,7 +515,9 @@ body.locked .period { visibility: hidden; }
     r.enDebito = Number.isFinite(r.debitoReal) ? r.debitoReal : r.debito;
     r.debeTC = Math.max(0, r.saldoTC);
     r.debeAhorros = Math.max(0, r.debesAhorros);
-    r.libre = r.enDebito - r.debeTC - r.debeAhorros; // lo que queda si pagas la TC y les devuelves a tus ahorros
+    r.libre = r.enDebito - r.debeTC; // lo que queda en débito después de pagar la TC
+    // El préstamo de tus ahorros es otra deuda: se devuelve con el plan de pago, no sale del débito de una vez.
+    r.cuotaAhorros = r.debeAhorros > 0.005 ? r.debeAhorros / (Number(cfg?.planAhorros?.[cur]) || 3) : 0;
     return r;
   }
   function anual(all, y, cur, cfg, saldos) {
@@ -1011,8 +1015,8 @@ body.locked .period { visibility: hidden; }
       <div><span>Balance del mes</span><b class="num ${r.balance < -0.005 ? 'neg' : 'pos'}">${fmt(r.balance, c)}</b><small>Ingresos − gastos − ahorros${Math.abs(r.prestamos) > 0.005 ? ' − préstamos' : ''} (cuenta las compras con TC)</small></div>
       <div><span>En tu cuenta débito</span><b class="num ${r.enDebito < -0.005 ? 'neg' : ''}">${fmt(r.enDebito, c)}</b><small>${Number.isFinite(r.debitoReal) ? 'Saldo real que anotaste' : Math.abs(r.traes) > 0.005 ? `Traes ${fmt(r.traes, c)} de ${antNom} + lo que entró − lo pagado con débito` : 'Lo que entró − lo pagado con débito'}</small></div>
       ${r.debeTC > 0.005 || r.cupo ? `<div class="tc"><span>Debes en la TC</span><b class="num">${fmt(r.debeTC, c)}</b><small>${r.cupo ? `Cupo disponible ${fmt(r.cupoDisponible, c)} de ${fmt(r.cupo, c)}` : 'Compras con TC − pagos'}</small></div>` : ''}
-      ${r.debeAhorros > 0.005 ? `<div class="aho"><span>Le debes a tus ahorros</span><b class="num">${fmt(r.debeAhorros, c)}</b><small>Préstamos − devoluciones</small></div>` : ''}
-      <div class="main"><span>Libre después de pagar</span><b class="num ${r.libre < -0.005 ? 'neg' : ''}">${fmt(r.libre, c)}</b><small>Débito${r.debeTC > 0.005 ? ' − TC' : ''}${r.debeAhorros > 0.005 ? ' − ahorros' : ''}</small></div>
+      <div class="main"><span>Libre después de pagar la TC</span><b class="num ${r.libre < -0.005 ? 'neg' : ''}">${fmt(r.libre, c)}</b><small>Débito${r.debeTC > 0.005 ? ' − TC' : ''}</small></div>
+      ${r.debeAhorros > 0.005 ? `<div class="aho full"><span>Aparte: le debes a tus ahorros</span><b class="num">${fmt(r.debeAhorros, c)}</b><small>Préstamos − devoluciones · tu plan: ${fmt(r.cuotaAhorros, c)} al mes. Lo devuelves con tus ingresos; no se resta de lo libre.</small></div>` : ''}
     </div>`;
     return `<div class="rbars">${filas}${pagado}${totales}</div>`;
   }
@@ -1034,13 +1038,14 @@ body.locked .period { visibility: hidden; }
         <div class="top"><span class="lbl">En tu cuenta débito · ${MONTHS[S.month - 1]}</span><span class="cur">${c}</span></div>
         <div class="amt num ${r.enDebito < -0.005 ? 'neg' : ''}" data-count="${r.enDebito}" data-cur="${c}" data-key="deb-${c}">${fmt(r.enDebito, c)}</div>
         <div class="split">${Number.isFinite(r.debitoReal) ? 'Saldo real que anotaste' : `${Math.abs(r.traes) > 0.005 ? `Traes <b class="num">${fmt(r.traes, c)}</b> de ${ant} · ` : ''}las compras con TC aún no salen de aquí`}</div>
-        ${r.debeTC > 0.005 || r.debeAhorros > 0.005 || r.cupo ? `<div class="porpagar">
-          ${r.debeTC > 0.005 || r.cupo ? `<div class="pp"><span>Debes en la TC</span><b class="num">${fmt(r.debeTC, c)}</b></div>
+        ${r.debeTC > 0.005 || r.cupo ? `<div class="porpagar">
+          <div class="pp"><span>Debes en la TC</span><b class="num">${fmt(r.debeTC, c)}</b></div>
           ${r.cupo ? `<div class="meter tc ${r.cupoDisponible < 0 ? 'over' : ''}" title="Cupo de la tarjeta de crédito usado"><i style="width:${Math.min(100, Math.max(0, r.saldoTC / r.cupo * 100)).toFixed(1)}%"></i></div>
-          <div class="split">Cupo disponible <b class="num">${fmt(r.cupoDisponible, c)}</b> de ${fmt(r.cupo, c)}</div>` : ''}` : ''}
-          ${r.debeAhorros > 0.005 ? `<div class="pp"><span>Le debes a tus ahorros</span><b class="num">${fmt(r.debeAhorros, c)}</b></div>` : ''}
-          <div class="pp libre"><span>Libre después de pagar</span><b class="num ${r.libre < -0.005 ? 'neg' : ''}">${fmt(r.libre, c)}</b></div>
+          <div class="split">Cupo disponible <b class="num">${fmt(r.cupoDisponible, c)}</b> de ${fmt(r.cupo, c)}</div>` : ''}
+          <div class="pp libre"><span>Libre después de pagar la TC</span><b class="num ${r.libre < -0.005 ? 'neg' : ''}">${fmt(r.libre, c)}</b></div>
         </div>` : ''}
+        ${r.debeAhorros > 0.005 ? `<div class="porpagar aho"><div class="pp"><span>Aparte: le debes a tus ahorros</span><b class="num">${fmt(r.debeAhorros, c)}</b></div>
+          <div class="split">Tu plan: ${fmt(r.cuotaAhorros, c)} al mes${(Number(S.settings.planAhorros?.[c]) || 3) > 1 ? ` por ${Number(S.settings.planAhorros?.[c]) || 3} meses` : ''}</div></div>` : ''}
         <div class="trio"><div><span>Entró</span><b class="num">${fmt(r.ingreso, c)}</b></div><div><span>Gastaste</span><b class="num">${fmt(r.gastado, c)}</b></div><div><span>Ahorraste</span><b class="num">${pct(r.tasaAhorro)}</b></div></div>
       </article>`;
     }).join('');
@@ -1078,8 +1083,8 @@ body.locked .period { visibility: hidden; }
         ${fila('Balance del mes', 'balance', { cls: 'strong', signed: true })}
         ${fila('En tu cuenta débito', 'enDebito', { cls: 'strong', signed: true })}
         ${fila('Debes en la TC', 'debeTC', {})}
-        ${CURS.some(c => R[c].debeAhorros > 0.005) ? fila('Le debes a tus ahorros', 'debeAhorros', {}) : ''}
-        ${fila('Libre después de pagar', 'libre', { cls: 'total', signed: true })}
+        ${fila('Libre después de pagar la TC', 'libre', { cls: 'total', signed: true, nota: 'Débito − TC' })}
+        ${CURS.some(c => R[c].debeAhorros > 0.005) ? fila('Aparte: le debes a tus ahorros', 'debeAhorros', { nota: 'Se devuelve con tu plan' }) : ''}
       </tbody></table></div>
       <div class="note" style="padding-inline:8px">Balance = ingresos − gastos − ahorros${hasPrest ? ' − préstamos' : ''}. Ingresos sin reembolsos ni retiros de ahorro; ahorros = aportes − retiros. Toca una fila con › para ver sus movimientos.</div>`;
     return `<div class="heros" id="heros">${heroes}</div>
