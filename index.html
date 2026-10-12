@@ -335,6 +335,9 @@ details.acc .actions, .loan .actions { flex-wrap: wrap; }
 .rb-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-top: 8px; padding: 10px 6px 0; border-top: 1px solid var(--line); }
 .rb-totals > div { display: grid; gap: 2px; padding: 8px 10px; border-radius: 12px; min-width: 0; }
 .rb-totals > div.main { background: var(--accent-soft); }
+.rb-totals > div.tc { background: color-mix(in oklab, var(--s-deu) 12%, var(--surface)); }
+.tcline { display: grid; gap: 6px; }
+.meter.tc i { background: repeating-linear-gradient(135deg, #f2c49b 0 4px, #ffe3c9 4px 7px); }
 .rb-totals span { font-size: 12.5px; color: var(--muted); }
 .rb-totals b { font-family: var(--display); font-size: 18px; overflow-wrap: anywhere; }
 .rb-totals b.neg { color: var(--neg); } .rb-totals b.pos { color: var(--pos); }
@@ -996,7 +999,8 @@ body.locked .period { visibility: hidden; }
     const totales = `<div class="rb-totals">
       <div><span>Balance del mes</span><b class="num ${r.balance < -0.005 ? 'neg' : 'pos'}">${fmt(r.balance, c)}</b><small>Ingresos − gastos − ahorros${Math.abs(r.prestamos) > 0.005 ? ' − préstamos' : ''}</small></div>
       ${Math.abs(r.traes) > 0.005 ? `<div><span>Traes de ${antNom}</span><b class="num">${fmt(r.traes, c)}</b><small>Saldo en débito</small></div>` : ''}
-      <div class="main"><span>Te queda</span><b class="num ${r.disponible < -0.005 ? 'neg' : ''}">${fmt(r.disponible, c)}</b><small>${Math.abs(r.traes) > 0.005 ? 'Lo que traes + balance' : 'Balance del mes'}</small></div>
+      ${r.cupo ? `<div class="tc"><span>Cupo disponible en TC</span><b class="num ${r.cupoDisponible < -0.005 ? 'neg' : ''}">${fmt(r.cupoDisponible, c)}</b><small>De ${fmt(r.cupo, c)}${r.saldoTC > 0.005 ? ` · debes ${fmt(r.saldoTC, c)}` : r.saldoTC < -0.005 ? ` · saldo a favor ${fmt(-r.saldoTC, c)}` : ''}</small></div>` : ''}
+      <div class="main"><span>Te queda en débito</span><b class="num ${r.disponible < -0.005 ? 'neg' : ''}">${fmt(r.disponible, c)}</b><small>${Math.abs(r.traes) > 0.005 ? 'Lo que traes + balance' : 'Balance del mes'}</small></div>
     </div>`;
     return `<div class="rbars">${filas}${pagado}${totales}</div>`;
   }
@@ -1015,11 +1019,13 @@ body.locked .period { visibility: hidden; }
     const heroes = CURS.map(c => {
       const r = R[c], entra = r.traes + r.ingreso, usado = entra > 0 ? r.gastado / entra : (r.gastado > 0 ? 1 : 0);
       return `<article class="hero-card" data-hero="${c}">
-        <div class="top"><span class="lbl">Disponible en ${MONTHS[S.month - 1]}</span><span class="cur">${c}</span></div>
+        <div class="top"><span class="lbl">Disponible en débito · ${MONTHS[S.month - 1]}</span><span class="cur">${c}</span></div>
         <div class="amt num ${r.disponible < -0.005 ? 'neg' : ''}" data-count="${r.disponible}" data-cur="${c}" data-key="disp-${c}">${fmt(r.disponible, c)}</div>
         <div class="split">${r.traes ? `Traes <b class="num">${fmt(r.traes, c)}</b> de ${ant} · ` : ''}balance del mes <b class="num">${fmt(r.balance, c)}</b></div>
         <div class="meter ${usado > 1 ? 'over' : ''}" title="Gastado sobre lo que tenías"><i style="width:${Math.min(100, Math.max(0, usado * 100)).toFixed(1)}%"></i></div>
         <div class="split">Usaste ${Math.round(usado * 100)} % de lo que tenías para el mes${r.prestadoMes > 0.005 ? ` · incluye <b class="num">${fmt(r.prestadoMes, c)}</b> prestado de tus ahorros` : ''}</div>
+        ${r.cupo ? `<div class="tcline"><div class="split">Cupo disponible en TC <b class="num">${fmt(r.cupoDisponible, c)}</b> de ${fmt(r.cupo, c)}</div>
+          <div class="meter tc ${r.cupoDisponible < 0 ? 'over' : ''}" title="Cupo de la tarjeta de crédito usado"><i style="width:${Math.min(100, Math.max(0, r.saldoTC / r.cupo * 100)).toFixed(1)}%"></i></div></div>` : ''}
         <div class="trio"><div><span>Entró</span><b class="num">${fmt(r.ingreso, c)}</b></div><div><span>Gastaste</span><b class="num">${fmt(r.gastado, c)}</b></div><div><span>Ahorraste</span><b class="num">${pct(r.tasaAhorro)}</b></div></div>
       </article>`;
     }).join('');
