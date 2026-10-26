@@ -263,6 +263,8 @@ input.inp.mini { padding: 6px 8px; text-align: right; width: 100%; min-width: 90
 .legend-list .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13.5px; }
 .legend-list .v { font-size: 13px; font-weight: 600; text-align: right; }
 .legend-list .v small { display: block; font-weight: 500; color: var(--muted); font-size: 11px; }
+.legend-list .otras { display: grid; gap: 0; margin: 2px 0 4px 14px; padding-left: 8px; border-left: 2px solid var(--line); }
+.legend-list .otras button { padding: 5px 4px; }
 /* plegables */
 details.acc { background: var(--surface); border-radius: var(--r); }
 details.acc > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px; font-family: var(--display); font-weight: 500; font-size: 16px; }
@@ -419,6 +421,11 @@ body.locked .period { visibility: hidden; }
   const tipoRe = (t, cfg) => t.reembolsaTipo || tipoGasto(t.reembolsaA, cfg);
   const isExtra = (t, cfg) => GASTO.has(t.tipo) && t.categoria !== PAGO_TC && (t.extra === true || (cfg?.extraCats || []).includes(t.categoria));
   const isCompraTC = t => t.medio === CREDITO && t.tipo !== 'Deudas';
+  // Un «Pago a TC» con impuesto: a la tarjeta solo se abona el monto sin impuesto; el impuesto es un gasto aparte.
+  const IMP_PAGO_TC = 'Impuesto del pago a TC';
+  const esPagoTC = t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC;
+  const impDe = t => impVal(t) === 'Si' ? Math.max(0, Number(t.impuestoValor) || 0) : 0;
+  const abonoTC = t => (Number(t.monto) || 0) - impDe(t);
   const isPrestamo = t => t.tipo === 'Deudas' && t.categoria !== DEUDA_TC && t.categoria !== CREDITO;
 
   // Totales de un conjunto de movimientos de una sola moneda.
@@ -430,6 +437,7 @@ body.locked .period { visibility: hidden; }
       const v = Number(t.monto) || 0;
       if (isLegacyRetiro(t)) { add('Ahorros|' + RETIRO, -v); continue; }
       if (isReembolso(t)) { reembolsos += v; if (t.reembolsaA) add(tipoRe(t, cfg) + '|' + t.reembolsaA, -v); else add('Gastos Variables|Otros reembolsos', -v); continue; }
+      if (esPagoTC(t)) { add('Gastos Fijos|' + PAGO_TC, abonoTC(t)); if (impDe(t)) add('Gastos Fijos|' + IMP_PAGO_TC, impDe(t)); continue; }
       add(t.tipo + '|' + t.categoria, v);
     }
     const byTipo = tipo => Object.entries(porCat).reduce((a, [k, v]) => k.startsWith(tipo + '|') ? a + v : a, 0);
@@ -444,7 +452,7 @@ body.locked .period { visibility: hidden; }
     // Con qué pagaste los gastos: TC (tarjeta de crédito), TD (tarjeta débito) u otro medio.
     const medioDe = t => t.medio === CREDITO ? 'TC' : t.medio === DEBITO ? 'TD' : 'otro';
     const porMedio = { 'Gastos Fijos': { TC: 0, TD: 0, otro: 0 }, 'Gastos Variables': { TC: 0, TD: 0, otro: 0 } };
-    for (const t of L) if (GASTO.has(t.tipo) && t.categoria !== PAGO_TC) porMedio[t.tipo][medioDe(t)] += Number(t.monto) || 0;
+    for (const t of L) if (GASTO.has(t.tipo)) porMedio[t.tipo][medioDe(t)] += t.categoria === PAGO_TC ? impDe(t) : Number(t.monto) || 0;
     const medioTotal = k => porMedio['Gastos Fijos'][k] + porMedio['Gastos Variables'][k];
     return {
       porMedio, gastoTC: medioTotal('TC'), gastoTD: medioTotal('TD'), gastoOtro: medioTotal('otro'),
@@ -476,7 +484,7 @@ body.locked .period { visibility: hidden; }
   // Saldo pendiente en la tarjeta de crédito al cierre de un mes: compras con TC − pagos a TC acumulados.
   function saldoTC(all, cur, mesKey, cfg) {
     const L = all.filter(t => t.moneda === cur && t.mes && t.mes <= mesKey);
-    return (Number(cfg?.tcInicial?.[cur]) || 0) + sumIf(L, isCompraTC) - sumIf(L, t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC);
+    return (Number(cfg?.tcInicial?.[cur]) || 0) + sumIf(L, isCompraTC) - L.filter(esPagoTC).reduce((a, t) => a + abonoTC(t), 0);
   }
 
   // Préstamos de tus ahorros: lo que sacaste de tus ahorros y vas a devolver, menos lo que ya devolviste.
@@ -825,7 +833,7 @@ body.locked .period { visibility: hidden; }
       const v = Object.fromEntries(CURS.map(c => [c, R[c].porCat[tipo + '|' + ca] || 0]));
       const hasBudget = CURS.some(c => budgets[c]?.[ca] > 0);
       if (!S.showZeros && !hasBudget && CURS.every(c => Math.abs(v[c]) < 0.005)) return '';
-      const notes = [ca === PAGO_TC ? 'No suma al total: abona a la tarjeta' : '', (S.settings.extraCats || []).includes(ca) ? 'Extraordinario' : '', ca === RETIRO ? 'Plata que sacaste de tus ahorros' : ''].filter(Boolean).join(' · ');
+      const notes = [ca === PAGO_TC ? 'No suma al total: abona a la tarjeta' : '', ca === IMP_PAGO_TC ? 'El impuesto de pagar la tarjeta: es un gasto' : '', (S.settings.extraCats || []).includes(ca) ? 'Extraordinario' : '', ca === RETIRO ? 'Plata que sacaste de tus ahorros' : ''].filter(Boolean).join(' · ');
       return `<tr data-fcat="${esc(tipo + '|' + ca)}" data-scope="${scope}"><td>${esc(ca)}${notes ? `<small>${notes}</small>` : ''}</td>${CURS.map(c => {
         const b = budgets[c]?.[ca] || 0, over = b > 0 && v[c] > b;
         return `<td class="${over ? 'over neg' : Math.abs(v[c]) < 0.005 ? 'zero' : ''}">${fmt(v[c], c)}${b > 0 ? `<small>${over ? 'pasado del' : 'tope'} ${fmt(b, c)}</small>` : ''}</td>`;
@@ -952,7 +960,7 @@ body.locked .period { visibility: hidden; }
   function totalRango(a, b, cur) {
     const r = totales(S.all.filter(t => t.moneda === cur && enRango(t, a, b)), S.settings);
     const hastaL = S.all.filter(t => t.moneda === cur && t.fecha && t.fecha <= b && !incompleto(t));
-    r.saldoTC = (Number(S.settings?.tcInicial?.[cur]) || 0) + sumIf(hastaL, isCompraTC) - sumIf(hastaL, t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC);
+    r.saldoTC = (Number(S.settings?.tcInicial?.[cur]) || 0) + sumIf(hastaL, isCompraTC) - hastaL.filter(esPagoTC).reduce((a, t) => a + abonoTC(t), 0);
     r.ahorrosAcum = sumIf(hastaL, t => t.tipo === 'Ahorros') - sumIf(hastaL, isLegacyRetiro);
     const abs = t => Math.abs(Number(t.monto) || 0);
     r.debesAhorros = hastaL.filter(esPrestamo).reduce((x, t) => x + abs(t), 0) - hastaL.filter(esDevolucion).reduce((x, t) => x + abs(t), 0);
@@ -970,7 +978,7 @@ body.locked .period { visibility: hidden; }
     if (!total) return `<div class="card"><div class="empty"><span>Todavía no hay gastos en ${cur} este mes.</span></div></div>`;
     const top = items.slice(0, 5), resto = items.slice(5).reduce((a, [, v]) => a + v, 0);
     const parts = top.map(([k, v], i) => ({ k, name: k.split('|')[1], v, color: CAT_COLORS[i] }));
-    if (resto > 0.005) parts.push({ k: null, name: `Otras (${items.length - 5})`, v: resto, color: 'var(--other)' });
+    if (resto > 0.005) parts.push({ k: null, otras: true, name: `Otras (${items.length - 5})`, v: resto, color: 'var(--other)' });
     const R0 = 52, C = 2 * Math.PI * R0, gap = parts.length > 1 ? 2 : 0;
     let off = 0, arcs = '';
     for (const p of parts) {
@@ -981,7 +989,8 @@ body.locked .period { visibility: hidden; }
     return `<div class="donut-wrap"><svg class="donut" viewBox="0 0 150 150" role="img" aria-label="Gastos por categoría en ${cur}">${arcs}
         <text x="75" y="70" text-anchor="middle" style="font-size:11px;fill:var(--muted);font-family:var(--body)">Gastaste</text>
         <text x="75" y="90" text-anchor="middle" style="font-size:${fmt(total, cur).length > 11 ? 12 : fmt(total, cur).length > 9 ? 14 : 17}px;font-weight:700">${esc(fmt(total, cur))}</text></svg>
-      <div class="legend-list">${parts.map(p => `<button type="button" ${p.k ? `data-fcat="${esc(p.k)}" data-scope="${scope}"` : 'data-tab="movs"'}><span class="dot" style="background:${p.color}"></span><span class="n">${esc(p.name)}</span><span class="v num">${fmt(p.v, cur)}<small>${Math.round(p.v / total * 100)} %</small></span></button>`).join('')}</div></div>`;
+      <div class="legend-list">${parts.map(p => `<button type="button" ${p.k ? `data-fcat="${esc(p.k)}" data-scope="${scope}"` : 'data-otras="1"'} ${p.otras ? `aria-expanded="${!!S.verOtras}"` : ''}><span class="dot" style="background:${p.color}"></span><span class="n">${esc(p.name)}${p.otras ? ` <span class="go">${S.verOtras ? '▴' : '▾'}</span>` : ''}</span><span class="v num">${fmt(p.v, cur)}<small>${Math.round(p.v / total * 100)} %</small></span></button>`).join('')}
+        ${resto > 0.005 && S.verOtras ? `<div class="otras">${items.slice(5).map(([k, v]) => `<button type="button" data-fcat="${esc(k)}" data-scope="${scope}"><span class="dot" style="background:var(--other)"></span><span class="n">${esc(k.split('|')[1])}</span><span class="v num">${fmt(v, cur)}<small>${pctTxt(v / total)}</small></span></button>`).join('')}</div>` : ''}</div></div>`;
   }
 
   // Sección «Préstamos de tus ahorros»: cuánto debes, avance y plan de pago por moneda.
@@ -1175,7 +1184,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     else if (S.fCat) {
       const [tp, ca] = S.fCat.key.split('|');
       list = S.all.filter(t => (S.fCat.scope === 'rango' ? enRango(t, S.fCat.desde, S.fCat.hasta) : S.fCat.scope === 'year' ? t.anio === S.year : t.mes === ym(S.year, S.month)) &&
-        ((t.tipo === tp && t.categoria === ca) || (isReembolso(t) && tipoRe(t, S.settings) === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
+        ((t.tipo === tp && t.categoria === ca) || (ca === IMP_PAGO_TC && esPagoTC(t) && impDe(t) > 0) || (isReembolso(t) && tipoRe(t, S.settings) === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
     } else list = q ? S.all.filter(t => [t.categoria, t.detalle, t.tipo, t.medio, t.moneda, t.reembolsaA].join(' ').toLowerCase().includes(q)) : S.all.filter(t => t.mes === ym(S.year, S.month));
     const pendAll = S.all.filter(t => impVal(t) === 'No');
     if (S.fPend) list = (q || S.fCat) ? list.filter(t => impVal(t) === 'No') : pendAll;
@@ -1497,6 +1506,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; if (d.scope === 'rango') { const p = periodo(); Object.assign(S.fCat, { desde: p.desde, hasta: p.hasta, label: p.label }); } S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.fmedio) { S.fMedio = d.fmedio; S.fCur = S.cur; S.fType = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.clearmedio) { S.fMedio = null; render(); return; }
+    if (d.otras) { S.verOtras = !S.verOtras; render(); return; }
     if (d.resabre) { S.resAbierto = S.resAbierto === d.resabre ? null : d.resabre; render(); return; }
     if (d.gotipo) { S.fType = d.gotipo; S.fCur = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.reintentar) { reintentar(); return; }
