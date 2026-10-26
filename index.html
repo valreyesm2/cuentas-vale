@@ -205,6 +205,9 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 .seg.full { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; }
 .seg.full button { padding: 9px 6px; }
 .seg.full.two-opt { grid-template-columns: 1fr 1fr; }
+.seg.full.cinco { grid-template-columns: repeat(5, 1fr); }
+.seg.full.cinco button { padding: 9px 2px; font-size: 12.5px; }
+.periodo { gap: 8px; }
 .chiprow { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
 .chiprow .chip { flex: none; }
 .setrow { display: grid; grid-template-columns: 1fr 140px; gap: 8px; align-items: center; padding-block: 8px; border-bottom: 1px solid var(--line); }
@@ -589,7 +592,8 @@ body.locked .period { visibility: hidden; }
     cur: store.get('cur', 'USD'), tab: store.get('tab', 'mes'), showZeros: store.get('zeros', false),
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
-    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, fPrest: false, fMedio: null, resAbierto: null, categorias: null, open: store.get('open', {}),
+    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, fPrest: false, fMedio: null, resAbierto: null, selBucket: null,
+    an: Object.assign({ modo: 'anio', ref: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`, desde: '', hasta: '' }, store.get('an', {})), categorias: null, open: store.get('open', {}),
     q: '', selMonth: null,
     cola: store.get('cola', []), // movimientos que no se pudieron guardar en la hoja
   };
@@ -836,8 +840,8 @@ body.locked .period { visibility: hidden; }
   /* ---------- gráficas ---------- */
   const niceMax = v => { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const f = v / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; };
   const CH = { W: 340, H: 190, L: 38, R: 6, T: 12, B: 22 };
-  const sel = i => S.selMonth === i + 1;
-  function frame(maxV, minV, cur, fmtTick) {
+  const sel = i => S.selBucket === i;
+  function frame(maxV, minV, cur, fmtTick, labels) {
     const { W, H, L, R, T, B } = CH;
     // Marcas en valores redondos (múltiplos de 1, 2 o 5): el eje va de «bot» a «top» en pasos de «step».
     const rango = Math.max(maxV, 0.0001) - Math.min(0, minV), step = Math.min(niceMax(rango / 4), niceMax(rango) / 4);
@@ -847,14 +851,14 @@ body.locked .period { visibility: hidden; }
     let g = '';
     for (let v = Math.ceil(bot / step - 1e-9) * step; v <= top + step / 2; v += step) { const y = sy(v); g += `<line x1="${L}" x2="${W - R}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-width="1"/><text x="${L - 5}" y="${y + 3}" text-anchor="end">${fmtTick(Math.abs(v) < step / 1000 ? 0 : v)}</text>`; }
     if (bot < 0) g += `<line x1="${L}" x2="${W - R}" y1="${sy(0)}" y2="${sy(0)}" stroke="var(--muted)" stroke-width="1"/>`;
-    const bw = (W - L - R) / 12;
-    for (let i = 0; i < 12; i++) g += `<g data-month="${i + 1}" style="cursor:pointer"><rect x="${L + i * bw}" y="${T}" width="${bw}" height="${H - T - B}" fill="${sel(i) ? 'var(--surface-2)' : 'transparent'}"/><text x="${L + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle" style="${sel(i) ? 'fill:var(--ink);font-weight:700' : ''}">${MON3[i][0]}</text></g>`;
+    const n = labels.length, bw = (W - L - R) / n, cada = n <= 16 ? 1 : Math.ceil(n / 12);
+    for (let i = 0; i < n; i++) g += `<g data-bucket="${i}" style="cursor:pointer"><rect x="${L + i * bw}" y="${T}" width="${bw}" height="${H - T - B}" fill="${sel(i) ? 'var(--surface-2)' : 'transparent'}"/>${i % cada === 0 || sel(i) ? `<text x="${L + i * bw + bw / 2}" y="${H - 6}" text-anchor="middle" style="${sel(i) ? 'fill:var(--ink);font-weight:700' : ''}">${esc(labels[i])}</text>` : ''}</g>`;
     return { g, sy, bw, x0: i => L + i * bw };
   }
   const svgWrap = (g, label) => `<svg viewBox="0 0 ${CH.W} ${CH.H}" role="img" aria-label="${label}" style="pointer-events:auto">${g}</svg>`;
 
-  function chartMesAMes(months, cur) {
-    const f = frame(Math.max(1, ...months.map(m => Math.max(Math.max(0, m.fijos) + Math.max(0, m.variables), m.ingreso))), 0, cur, v => v ? compact(v, cur) : '0');
+  function chartMesAMes(months, cur, labels) {
+    const f = frame(Math.max(1, ...months.map(m => Math.max(Math.max(0, m.fijos) + Math.max(0, m.variables), m.ingreso))), 0, cur, v => v ? compact(v, cur) : '0', labels);
     let g = f.g;
     months.forEach((m, i) => {
       const x = f.x0(i) + f.bw * 0.18, w = f.bw * 0.64, fi = Math.max(0, m.fijos), va = Math.max(0, m.variables);
@@ -863,12 +867,12 @@ body.locked .period { visibility: hidden; }
         ${va > 0 ? `<rect x="${x}" y="${yV}" width="${w}" height="${Math.max(0, yF - yV - (fi > 0 ? 2 : 0))}" fill="var(--s-var)" rx="1.5"/>` : ''}
         ${m.ingreso > 0 ? `<line x1="${x - 2}" x2="${x + w + 2}" y1="${f.sy(m.ingreso)}" y2="${f.sy(m.ingreso)}" stroke="var(--s-ing)" stroke-width="2.5" stroke-linecap="round"/>` : ''}</g>`;
     });
-    return svgWrap(g, `Gastos e ingreso por mes en ${cur}`);
+    return svgWrap(g, `Gastos e ingreso en ${cur}`);
   }
-  function chartTasa(months) {
+  function chartTasa(months, labels) {
     const vals = months.map(m => m.n && m.tasaAhorro != null ? m.tasaAhorro : null);
     const real = vals.filter(v => v != null);
-    const f = frame(Math.max(0.5, ...real), Math.min(0, ...real), null, v => Math.round(v * 100) + '%');
+    const f = frame(Math.max(0.5, ...real), Math.min(0, ...real), null, v => Math.round(v * 100) + '%', labels);
     let g = f.g;
     vals.forEach((v, i) => {
       if (v == null) return;
@@ -878,8 +882,8 @@ body.locked .period { visibility: hidden; }
     });
     return svgWrap(g, 'Tasa de ahorro por mes');
   }
-  function chartTC(months, cur) {
-    const f = frame(Math.max(1, ...months.map(m => Math.max(m.comprasTC, m.pagoTC, m.saldoTC))), Math.min(0, ...months.map(m => m.saldoTC)), cur, v => v ? compact(v, cur) : '0');
+  function chartTC(months, cur, labels) {
+    const f = frame(Math.max(1, ...months.map(m => Math.max(m.comprasTC, m.pagoTC, m.saldoTC))), Math.min(0, ...months.map(m => m.saldoTC)), cur, v => v ? compact(v, cur) : '0', labels);
     let g = f.g, pts = [];
     months.forEach((m, i) => {
       const w = f.bw * 0.32, x = f.x0(i) + f.bw * 0.16;
@@ -891,15 +895,68 @@ body.locked .period { visibility: hidden; }
     pts.forEach(p => { g += `<circle pointer-events="none" cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--ink)" stroke="var(--surface)" stroke-width="2"/>`; });
     return svgWrap(g, `Compras y pagos con tarjeta de crédito en ${cur}`);
   }
-  function heatmap(monthsTot, cur) {
+  function heatmap(monthsTot, cur, labels) {
     const keys = new Set();
     monthsTot.forEach(m => Object.keys(m.porCat).forEach(k => { const t = k.split('|')[0]; if (GASTO.has(t) && !k.endsWith('|' + PAGO_TC)) keys.add(k); }));
     const active = monthsTot.map((m, i) => m.n ? i : -1).filter(i => i >= 0);
-    if (!keys.size || !active.length) return '<div class="note">Sin gastos este año en esta moneda.</div>';
+    if (!keys.size || !active.length) return '<div class="note">Sin gastos en este período en esta moneda.</div>';
     const rows = [...keys].map(k => ({ k, vals: active.map(i => monthsTot[i].porCat[k] || 0) })).map(r => ({ ...r, tot: r.vals.reduce((a, b) => a + b, 0) })).sort((a, b) => b.tot - a.tot);
-    return `<div class="card tight scrollx"><table class="tbl num heat"><thead><tr><th>Categoría</th>${active.map(i => `<th>${MON3[i]}</th>`).join('')}</tr></thead><tbody>
-      ${rows.map(r => { const mx = Math.max(...r.vals.map(v => Math.max(0, v))) || 1; return `<tr data-fcat="${esc(r.k)}" data-scope="year"><td>${esc(r.k.split('|')[1])}</td>${r.vals.map(v => { const p = Math.max(0, v) / mx; return `<td style="background:color-mix(in oklab, var(--seq) ${Math.round(p * 62)}%, transparent)" title="${esc(fmt(v, cur))}">${Math.abs(v) < 0.005 ? '·' : compact(v, cur)}</td>`; }).join('')}</tr>`; }).join('')}
+    return `<div class="card tight scrollx"><table class="tbl num heat"><thead><tr><th>Categoría</th>${active.map(i => `<th>${esc(labels[i])}</th>`).join('')}</tr></thead><tbody>
+      ${rows.map(r => { const mx = Math.max(...r.vals.map(v => Math.max(0, v))) || 1; return `<tr data-fcat="${esc(r.k)}" data-scope="rango"><td>${esc(r.k.split('|')[1])}</td>${r.vals.map(v => { const p = Math.max(0, v) / mx; return `<td style="background:color-mix(in oklab, var(--seq) ${Math.round(p * 62)}%, transparent)" title="${esc(fmt(v, cur))}">${Math.abs(v) < 0.005 ? '·' : compact(v, cur)}</td>`; }).join('')}</tr>`; }).join('')}
     </tbody></table></div>`;
+  }
+
+  /* ---------- períodos de Análisis ---------- */
+  // modo: semana | quincena | mes | anio | rango. «ref» es una fecha dentro del período.
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const deIso = f => { const [y, m, d] = f.split('-').map(Number); return new Date(y, m - 1, d); };
+  const finMes = (y, m) => new Date(y, m, 0).getDate();
+  const DIAS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  const fechaCorta = f => { const d = deIso(f); return `${d.getDate()} ${MON3[d.getMonth()].toLowerCase()}`; };
+  function porDias(desde, hasta, conDia) {
+    const out = []; for (let d = deIso(desde); iso(d) <= hasta; d.setDate(d.getDate() + 1)) { const f = iso(d); out.push({ desde: f, hasta: f, short: conDia ? DIAS[d.getDay()][0].toUpperCase() + d.getDate() : String(d.getDate()), label: `${DIAS[d.getDay()]} ${fechaCorta(f)}` }); }
+    return out;
+  }
+  function porSemanas(desde, hasta) {
+    const out = []; let d = deIso(desde);
+    while (iso(d) <= hasta) { const a = iso(d); const e = new Date(d); e.setDate(e.getDate() + 6); const b = iso(e) > hasta ? hasta : iso(e); out.push({ desde: a, hasta: b, short: `${deIso(a).getDate()}-${deIso(b).getDate()}`, label: `${fechaCorta(a)} – ${fechaCorta(b)}` }); d = new Date(e); d.setDate(d.getDate() + 1); }
+    return out;
+  }
+  function porMeses(desde, hasta) {
+    const out = []; let d = deIso(desde); d.setDate(1);
+    while (iso(d) <= hasta) { const y = d.getFullYear(), m = d.getMonth() + 1, a = ymOf(y, m) + '-01', b = ymOf(y, m) + '-' + pad(finMes(y, m)); out.push({ desde: a < desde ? desde : a, hasta: b > hasta ? hasta : b, short: MON3[m - 1][0], label: `${MONTHS[m - 1]} ${y}`, mes: m, anio: y }); d.setMonth(d.getMonth() + 1); }
+    return out;
+  }
+  function periodo() {
+    const A = S.an, r = deIso(A.ref), y = r.getFullYear(), m = r.getMonth() + 1;
+    if (A.modo === 'anio') { const b = porMeses(`${y}-01-01`, `${y}-12-31`); b.forEach(x => { x.short = MON3[x.mes - 1][0]; }); return { desde: `${y}-01-01`, hasta: `${y}-12-31`, label: String(y), nombre: `${y}`, buckets: b, porMes: true }; }
+    if (A.modo === 'mes') { const a = ymOf(y, m) + '-01', b = ymOf(y, m) + '-' + pad(finMes(y, m)); return { desde: a, hasta: b, label: `${MONTHS[m - 1]} ${y}`, nombre: MONTHS[m - 1], buckets: porSemanas(a, b), porMes: false, mesUnico: { y, m } }; }
+    if (A.modo === 'quincena') { const pri = r.getDate() <= 15, a = ymOf(y, m) + (pri ? '-01' : '-16'), b = ymOf(y, m) + '-' + (pri ? '15' : pad(finMes(y, m))); return { desde: a, hasta: b, label: `${pri ? '1–15' : '16–' + finMes(y, m)} ${MON3[m - 1].toLowerCase()} ${y}`, nombre: `${pri ? 'la primera' : 'la segunda'} quincena de ${MONTHS[m - 1]}`, buckets: porDias(a, b), porMes: false }; }
+    if (A.modo === 'semana') { const l = new Date(r); l.setDate(r.getDate() - ((r.getDay() + 6) % 7)); const d2 = new Date(l); d2.setDate(l.getDate() + 6); const a = iso(l), b = iso(d2); return { desde: a, hasta: b, label: `${fechaCorta(a)} – ${fechaCorta(b)}`, nombre: 'esta semana', buckets: porDias(a, b, true), porMes: false }; }
+    const a = A.desde <= A.hasta ? A.desde : A.hasta, b = A.desde <= A.hasta ? A.hasta : A.desde;
+    const dias = Math.round((deIso(b) - deIso(a)) / 864e5) + 1;
+    return { desde: a, hasta: b, label: `${fechaCorta(a)} – ${fechaCorta(b)}${a.slice(0, 4) !== b.slice(0, 4) ? ' ' + b.slice(0, 4) : ''}`, nombre: 'este rango', buckets: dias <= 31 ? porDias(a, b) : dias <= 120 ? porSemanas(a, b) : porMeses(a, b), porMes: dias > 120, dias };
+  }
+  function moverPeriodo(k) {
+    const A = S.an, r = deIso(A.ref);
+    if (A.modo === 'anio') r.setFullYear(r.getFullYear() + k);
+    else if (A.modo === 'mes') { r.setDate(1); r.setMonth(r.getMonth() + k); }
+    else if (A.modo === 'quincena') { if (r.getDate() <= 15) { if (k > 0) r.setDate(16); else { r.setDate(1); r.setMonth(r.getMonth() - 1); r.setDate(16); } } else { if (k > 0) { r.setDate(1); r.setMonth(r.getMonth() + 1); } else r.setDate(1); } }
+    else if (A.modo === 'semana') r.setDate(r.getDate() + 7 * k);
+    else { const p = periodo(), n = Math.round((deIso(p.hasta) - deIso(p.desde)) / 864e5) + 1, d = deIso(p.desde), h = deIso(p.hasta); d.setDate(d.getDate() + n * k); h.setDate(h.getDate() + n * k); A.desde = iso(d); A.hasta = iso(h); }
+    if (A.modo !== 'rango') A.ref = iso(r);
+    S.selBucket = null; store.set('an', A); render();
+  }
+  // Totales de un rango de fechas, en una moneda.
+  const enRango = (t, a, b) => t.fecha && t.fecha >= a && t.fecha <= b && !incompleto(t);
+  function totalRango(a, b, cur) {
+    const r = totales(S.all.filter(t => t.moneda === cur && enRango(t, a, b)), S.settings);
+    const hastaL = S.all.filter(t => t.moneda === cur && t.fecha && t.fecha <= b && !incompleto(t));
+    r.saldoTC = (Number(S.settings?.tcInicial?.[cur]) || 0) + sumIf(hastaL, isCompraTC) - sumIf(hastaL, t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC);
+    r.ahorrosAcum = sumIf(hastaL, t => t.tipo === 'Ahorros') - sumIf(hastaL, isLegacyRetiro);
+    const abs = t => Math.abs(Number(t.monto) || 0);
+    r.debesAhorros = hastaL.filter(esPrestamo).reduce((x, t) => x + abs(t), 0) - hastaL.filter(esDevolucion).reduce((x, t) => x + abs(t), 0);
+    return r;
   }
 
   /* ---------- vistas ---------- */
@@ -1117,7 +1174,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (S.fSin) list = S.all.filter(incompleto);
     else if (S.fCat) {
       const [tp, ca] = S.fCat.key.split('|');
-      list = S.all.filter(t => (S.fCat.scope === 'year' ? t.anio === S.year : t.mes === ym(S.year, S.month)) &&
+      list = S.all.filter(t => (S.fCat.scope === 'rango' ? enRango(t, S.fCat.desde, S.fCat.hasta) : S.fCat.scope === 'year' ? t.anio === S.year : t.mes === ym(S.year, S.month)) &&
         ((t.tipo === tp && t.categoria === ca) || (isReembolso(t) && tipoRe(t, S.settings) === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
     } else list = q ? S.all.filter(t => [t.categoria, t.detalle, t.tipo, t.medio, t.moneda, t.reembolsaA].join(' ').toLowerCase().includes(q)) : S.all.filter(t => t.mes === ym(S.year, S.month));
     const pendAll = S.all.filter(t => impVal(t) === 'No');
@@ -1133,7 +1190,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       html += txRow(t);
     }
     if (last) html += '</div>';
-    const scope = S.fMedio ? `Gastos de ${MONTHS[S.month - 1]} pagados con ${S.fMedio === 'NA' ? 'otro medio' : S.fMedio.toLowerCase()}` : S.fPrest ? 'Préstamos y devoluciones de tus ahorros, todos los meses' : S.fSin ? 'Movimientos incompletos: tócalos para completarlos' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
+    const scope = S.fMedio ? `Gastos de ${MONTHS[S.month - 1]} pagados con ${S.fMedio === 'NA' ? 'otro medio' : S.fMedio.toLowerCase()}` : S.fPrest ? 'Préstamos y devoluciones de tus ahorros, todos los meses' : S.fSin ? 'Movimientos incompletos: tócalos para completarlos' : S.fCat ? `${S.fCat.key.split('|')[1]} · ${S.fCat.scope === 'rango' ? S.fCat.label : S.fCat.scope === 'year' ? S.year : MONTHS[S.month - 1] + ' ' + S.year}` : S.fPend ? 'Impuesto pendiente, todos los meses' : q ? 'Resultados en todo el registro' : `Movimientos de ${MONTHS[S.month - 1]} ${S.year}`;
     const tot = CURS.filter(c => list.some(t => t.moneda === c)).map(c => {
       const L = list.filter(t => t.moneda === c);
       return `<tr><td>${c}</td><td>${fmt(L.filter(moneyIn).reduce((a, t) => a + Math.abs(t.monto), 0), c)}</td><td>${fmt(L.filter(t => !moneyIn(t)).reduce((a, t) => a + Number(t.monto), 0), c)}</td></tr>`;
@@ -1153,47 +1210,54 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   }
 
   function viewAnio() {
-    const R = Object.fromEntries(CURS.map(c => [c, anual(S.all, S.year, c, S.settings, S.saldos)]));
-    if (!R.COP.n && !R.USD.n) return `<div class="card"><div class="empty"><b>Sin movimientos en ${S.year}</b><span>Usa las flechas de arriba para cambiar de año.</span></div></div>`;
-    const cur = S.cur;
-    const months = Array.from({ length: 12 }, (_, i) => mensual(S.all, S.year, i + 1, cur, S.settings, S.saldos));
-    const sm = S.selMonth ? months[S.selMonth - 1] : null;
-    const readout = sm && sm.n ? `<b>${MONTHS[S.selMonth - 1]}</b>: ingreso <b class="num">${fmt(sm.ingreso, cur)}</b>, gastos <b class="num">${fmt(sm.gastado, cur)}</b>, ahorro <b class="num">${pct(sm.tasaAhorro)}</b>, balance <b class="num">${fmt(sm.balance, cur)}</b>. <button type="button" class="chip" data-open-month="${S.selMonth}">Abrir mes</button>` : 'Toca un mes en cualquier gráfica para ver el detalle.';
-    const hasTC = months.some(m => m.comprasTC || m.pagoTC);
+    const P = periodo(), cur = S.cur;
+    const MODOS = [['semana', 'Semana'], ['quincena', 'Quincena'], ['mes', 'Mes'], ['anio', 'Año'], ['rango', 'Rango']];
+    const selector = `<section class="block periodo"><div class="seg full cinco" role="group" aria-label="Período">${MODOS.map(([k, l]) => `<button type="button" data-anmodo="${k}" aria-pressed="${S.an.modo === k}">${l}</button>`).join('')}</div>
+      ${S.an.modo === 'rango' ? `<div class="two"><div class="field"><label for="an-desde">Desde</label><input class="inp" type="date" id="an-desde" data-anfecha="desde" value="${esc(P.desde)}"></div><div class="field"><label for="an-hasta">Hasta</label><input class="inp" type="date" id="an-hasta" data-anfecha="hasta" value="${esc(P.hasta)}"></div></div>` : ''}
+      <div class="note">Del ${esc(fechaCorta(P.desde))} ${P.desde.slice(0, 4)} al ${esc(fechaCorta(P.hasta))} ${P.hasta.slice(0, 4)} · usa ‹ › arriba para moverte.</div></section>`;
+    const R = Object.fromEntries(CURS.map(c => [c, totalRango(P.desde, P.hasta, c)]));
+    if (!R.COP.n && !R.USD.n) return selector + `<div class="card"><div class="empty"><b>Sin movimientos en ${esc(P.label)}</b><span>Usa las flechas de arriba o cambia el período.</span></div></div>`;
+    const B = P.buckets, labels = B.map(b => b.short);
+    const T = B.map(b => totalRango(b.desde, b.hasta, cur));
+    const sb = S.selBucket != null && B[S.selBucket] ? S.selBucket : null, sm = sb != null ? T[sb] : null;
+    const readout = sm && sm.n ? `<b>${esc(B[sb].label)}</b>: ingreso <b class="num">${fmt(sm.ingreso, cur)}</b>, gastos <b class="num">${fmt(sm.gastado, cur)}</b>${P.porMes ? `, ahorro <b class="num">${pct(sm.tasaAhorro)}</b>` : ''}, balance <b class="num">${fmt(sm.balance, cur)}</b>.${B[sb].mes ? ` <button type="button" class="chip" data-open-month="${B[sb].mes}" data-open-year="${B[sb].anio}">Abrir mes</button>` : ''}`
+      : sm ? `<b>${esc(B[sb].label)}</b>: sin movimientos en ${cur}.` : `Toca ${P.porMes ? 'un mes' : B.length > 8 ? 'un día' : 'una barra'} en cualquier gráfica para ver el detalle.`;
+    const hasTC = T.some(m => m.comprasTC || m.pagoTC);
+    const unidad = P.porMes ? 'Mes' : B[0].desde === B[0].hasta ? 'Día' : 'Semana';
     const resumen = [
       ['Ingreso', 'ingreso', 'Sin reembolsos ni retiros'], ['Gastos fijos', 'fijos', ''], ['Gastos variables', 'variables', ''],
       ['Total gastado', 'gastado', 'Fijos + variables', 'strong'], ['Gasto recurrente', 'recurrente', ''], ['Gasto extraordinario', 'extraordinario', ''],
-      ['Ahorros del año', 'ahorros', 'Neto de retiros'], ['Ahorros acumulados', 'ahorrosAcum', 'Todo el registro'], ['Balance del año', 'balance', '', 'total'],
-    ].map(([l, k, n, cls]) => `<tr class="${cls || ''}"><td>${l}${n ? `<small>${n}</small>` : ''}</td>${CURS.map(c => cell(R[c][k], c, k === 'balance' || k.startsWith('ahorros'))).join('')}</tr>`).join('');
-    return `<div class="hero"><div class="eyebrow">Tasa de ahorro ${S.year}</div></div>
+      ['Ahorros del período', 'ahorros', 'Neto de retiros'], ['Balance del período', 'balance', 'Ingreso − gastos − ahorros', 'total'],
+    ].map(([l, k, n, cls]) => `<tr class="${cls || ''}"><td>${l}${n ? `<small>${n}</small>` : ''}</td>${CURS.map(c => cell(R[c][k], c, k === 'balance' || k === 'ahorros')).join('')}</tr>`).join('');
+    return selector + `<div class="hero"><div class="eyebrow">Tasa de ahorro · ${esc(P.label)}</div></div>
       <div class="duo">${CURS.map(c => `<div class="bal"><span class="eyebrow">${c}</span><span class="v num ${R[c].tasaAhorro < 0 ? 'neg' : ''}">${pct(R[c].tasaAhorro)}</span><span class="note">${fmt(R[c].ahorros, c)} de ${fmt(R[c].ingreso, c)}</span></div>`).join('')}</div>
-      <section class="block"><h2>Resumen del año</h2>
+      <section class="block"><h2>Resumen del período</h2>
         <div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
-          <tr><td>Cuenta débito<small>Saldo estimado al cierre</small></td>${CURS.map(c => cell(R[c].debito, c, true)).join('')}</tr>
-          <tr><td>Tarjeta de crédito<small>Saldo pendiente al cierre</small></td>${CURS.map(c => cell(R[c].saldoTC, c)).join('')}</tr>
-          <tr><td>Le debes a tus ahorros<small>Préstamos menos devoluciones, al cierre</small></td>${CURS.map(c => cell(R[c].debesAhorros, c)).join('')}</tr>
+          <tr><td>Ahorros acumulados<small>Hasta el ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(R[c].ahorrosAcum, c, true)).join('')}</tr>
+          <tr><td>Debes en la TC<small>Al ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(Math.max(0, R[c].saldoTC), c)).join('')}</tr>
+          <tr><td>Le debes a tus ahorros<small>Al ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(Math.max(0, R[c].debesAhorros), c)).join('')}</tr>
         </tbody></table></div></section>
       <section class="block"><div class="sechead"><h2>Gráficas en ${cur}</h2>${curSeg('Moneda de las gráficas')}</div>
-        <div class="chart"><h3 class="ch">Gastos e ingreso mes a mes</h3>
+        <div class="chart"><h3 class="ch">Gastos e ingreso ${P.porMes ? 'mes a mes' : unidad === 'Día' ? 'día a día' : 'semana a semana'}</h3>
           <div class="legend"><span><span class="dot" style="background:var(--s-fijos)"></span>Gastos fijos</span><span><span class="dot" style="background:var(--s-var)"></span>Gastos variables</span><span><span class="sw-line" style="background:var(--s-ing)"></span>Ingreso</span></div>
-          ${chartMesAMes(months, cur)}</div>
-        <div class="chart"><h3 class="ch">Tasa de ahorro</h3><div class="legend"><span>Ahorros netos ÷ ingreso. Rojo = sacaste más de lo que ahorraste.</span></div>${chartTasa(months)}</div>
+          ${chartMesAMes(T, cur, labels)}</div>
+        ${P.porMes ? `<div class="chart"><h3 class="ch">Tasa de ahorro</h3><div class="legend"><span>Ahorros netos ÷ ingreso. Rojo = sacaste más de lo que ahorraste.</span></div>${chartTasa(T, labels)}</div>` : ''}
         ${hasTC ? `<div class="chart"><h3 class="ch">Tarjeta de crédito</h3>
-          <div class="legend"><span><span class="dot" style="background:var(--s-var)"></span>Compras</span><span><span class="dot" style="background:var(--s-fijos)"></span>Pagos</span><span><span class="sw-line" style="background:var(--ink)"></span>Saldo pendiente</span></div>
-          ${chartTC(months, cur)}</div>` : ''}
+          <div class="legend"><span><span class="dot" style="background:var(--s-var)"></span>Compras</span><span><span class="dot" style="background:var(--s-fijos)"></span>Pagos</span><span><span class="sw-line" style="background:var(--ink)"></span>Lo que debes</span></div>
+          ${chartTC(T, cur, labels)}</div>` : ''}
         <div class="readout card">${readout}</div></section>
-      <section class="block"><h2>Gastos por categoría y mes</h2>
-        <div class="note">El color más intenso marca el mes en que más gastaste en cada categoría. Toca una fila para ver sus movimientos.</div>
-        ${heatmap(months, cur)}</section>
-      <section class="block"><h2>Mes a mes en ${cur}</h2>
-        <div class="card tight scrollx"><table class="tbl num"><thead><tr><th>Mes</th><th>Ingreso</th><th>Gastos</th><th>Ahorro</th><th>Balance</th></tr></thead><tbody>
-          ${months.map((m, i) => m.n ? `<tr class="${sel(i) ? 'sel' : ''}"><td>${MON3[i]}</td><td>${fmt(m.ingreso, cur)}</td><td>${fmt(m.gastado, cur)}</td><td class="${m.tasaAhorro < 0 ? 'neg' : ''}">${pct(m.tasaAhorro)}</td><td class="${m.balance < -0.005 ? 'neg' : ''}">${fmt(m.balance, cur)}</td></tr>` : '').join('')}
+      <section class="block"><h2>Gastos por categoría y ${unidad.toLowerCase()}</h2>
+        <div class="note">El color más intenso marca ${unidad === 'Mes' ? 'el mes' : unidad === 'Día' ? 'el día' : 'la semana'} en que más gastaste en cada categoría. Toca una fila para ver sus movimientos.</div>
+        ${heatmap(T, cur, labels)}</section>
+      <section class="block"><h2>${unidad} a ${unidad.toLowerCase()} en ${cur}</h2>
+        <div class="card tight scrollx"><table class="tbl num"><thead><tr><th>${unidad}</th><th>Ingreso</th><th>Gastos</th>${P.porMes ? '<th>Ahorro</th>' : ''}<th>Balance</th></tr></thead><tbody>
+          ${T.map((m, i) => m.n ? `<tr class="${sel(i) ? 'sel' : ''}"><td>${esc(P.porMes ? MON3[B[i].mes - 1] : B[i].label)}</td><td>${fmt(m.ingreso, cur)}</td><td>${fmt(m.gastado, cur)}</td>${P.porMes ? `<td class="${m.tasaAhorro < 0 ? 'neg' : ''}">${pct(m.tasaAhorro)}</td>` : ''}<td class="${m.balance < -0.005 ? 'neg' : ''}">${fmt(m.balance, cur)}</td></tr>` : '').join('')}
         </tbody></table></div></section>
       <div class="row between"><span class="note">${S.showZeros ? 'Mostrando todas las categorías' : 'Solo categorías con movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
-      ${desglose('Ingreso', R, 'ingreso', 'year')}
-      ${desglose('Gastos Fijos', R, 'fijos', 'year')}
-      ${desglose('Gastos Variables', R, 'variables', 'year')}
-      ${desglose('Ahorros', R, 'ahorros', 'year', { title: 'Ahorros del año' })}`;
+      ${desglose('Ingreso', R, 'ingreso', 'rango')}
+      ${desglose('Gastos Fijos', R, 'fijos', 'rango')}
+      ${desglose('Gastos Variables', R, 'variables', 'rango')}
+      ${desglose('Ahorros', R, 'ahorros', 'rango', { title: 'Ahorros del período' })}`;
   }
 
   function viewConectar() {
@@ -1265,7 +1329,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   }
 
   function render() {
-    $('#periodLabel').textContent = S.tab === 'anio' ? String(S.year) : `${MONTHS[S.month - 1]} ${S.year}`;
+    $('#periodLabel').textContent = S.tab === 'anio' ? periodo().label : `${MONTHS[S.month - 1]} ${S.year}`;
     document.querySelectorAll('nav.tabs [data-tab]').forEach(b => b.dataset.tab === S.tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
     const v = $('#view');
     document.body.classList.toggle('locked', !CONN || LOCK.locked);
@@ -1428,9 +1492,9 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
 
   /* ---------- eventos ---------- */
   document.addEventListener('click', async e => {
-    const b = e.target.closest('button, [data-month], tr[data-fcat], [data-gotipo]'); if (!b || b.closest('#sheetRoot')) return;
+    const b = e.target.closest('button, [data-bucket], tr[data-fcat], [data-gotipo]'); if (!b || b.closest('#sheetRoot')) return;
     const d = b.dataset;
-    if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
+    if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; if (d.scope === 'rango') { const p = periodo(); Object.assign(S.fCat, { desde: p.desde, hasta: p.hasta, label: p.label }); } S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.fmedio) { S.fMedio = d.fmedio; S.fCur = S.cur; S.fType = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.clearmedio) { S.fMedio = null; render(); return; }
     if (d.resabre) { S.resAbierto = S.resAbierto === d.resabre ? null : d.resabre; render(); return; }
@@ -1445,7 +1509,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (d.tab) { S.tab = d.tab; if (d.tab !== 'movs') { S.fCat = null; S.fSin = false; S.fMedio = null; } store.set('tab', S.tab); render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.step) {
       const k = Number(d.step);
-      if (S.tab === 'anio') { S.year += k; S.selMonth = null; render(); return; }
+      if (S.tab === 'anio') { moverPeriodo(k); return; }
       let m = S.month + k, y = S.year; if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
       S.month = m; S.year = y; render(); return;
     }
@@ -1454,8 +1518,14 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (d.ftype) { S.fType = d.ftype; render(); return; }
     if (d.pending) { S.fPend = d.pending === 'toggle' ? !S.fPend : true; if (d.pending !== 'toggle') { S.tab = 'movs'; S.q = ''; S.fCat = null; $('#scroller').scrollTo(0, 0); } render(); return; }
     if (d.zeros) { S.showZeros = !S.showZeros; store.set('zeros', S.showZeros); render(); return; }
-    if (d.month) { S.selMonth = Number(d.month) === S.selMonth ? null : Number(d.month); render(); return; }
-    if (d.openMonth) { S.month = Number(d.openMonth); S.tab = 'mes'; render(); $('#scroller').scrollTo(0, 0); return; }
+    if (d.bucket != null) { const i = Number(d.bucket); S.selBucket = S.selBucket === i ? null : i; render(); return; }
+    if (d.openMonth) { S.month = Number(d.openMonth); if (d.openYear) S.year = Number(d.openYear); S.tab = 'mes'; render(); $('#scroller').scrollTo(0, 0); return; }
+    if (d.anmodo) {
+      const A = S.an;
+      if (d.anmodo === 'rango' && A.modo !== 'rango') { const p = periodo(); A.desde = p.desde; A.hasta = p.hasta; }
+      if (A.modo === 'rango' && d.anmodo !== 'rango') A.ref = A.hasta || todayStr();
+      A.modo = d.anmodo; S.selBucket = null; store.set('an', A); render(); return;
+    }
     if (d.extracat) {
       const next = structuredClone(S.settings), set = new Set(next.extraCats || []);
       set.has(d.extracat) ? set.delete(d.extracat) : set.add(d.extracat); next.extraCats = [...set];
@@ -1537,6 +1607,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   });
   document.addEventListener('change', async e => {
     const el = e.target, d = el.dataset || {};
+    if (d.anfecha) { if (/^\d{4}-\d{2}-\d{2}$/.test(el.value)) { S.an[d.anfecha] = el.value; S.selBucket = null; store.set('an', S.an); render(); } return; }
     if (d.plan) { const next = structuredClone(S.settings); next.planAhorros = { ...(next.planAhorros || {}), [d.plan]: Number(el.value) }; saveSettings(next); return; }
     if (el.id === 'importFile' && el.files?.[0]) {
       const st = $('#importState');
