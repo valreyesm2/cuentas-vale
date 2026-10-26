@@ -1028,8 +1028,6 @@ body.locked .period { visibility: hidden; }
     const pend = R.COP.pendientes + R.USD.pendientes;
     const sinFecha = S.all.filter(incompleto).length;
     const hasPrest = CURS.some(c => R[c].prestamos);
-    const recent = sortTx(S.all.filter(t => t.mes === k)).slice(0, 5);
-    const tcCurs = CURS.filter(c => R[c].comprasTC || R[c].pagoTC || Math.abs(R[c].saldoTC) > 0.005 || R[c].cupo);
     const ant = MONTHS[(S.month + 10) % 12];
     // tarjetas principales
     const heroes = CURS.map(c => {
@@ -1096,8 +1094,6 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
       ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) || sinClasificar().length ? seccionPrestamos(R) : ''}
-      ${recent.length ? `<section class="block"><div class="row between"><h2>Últimos movimientos</h2><button type="button" class="chip" data-tab="movs">Ver todos</button></div>
-        <div class="card">${recent.map(txRow).join('')}</div></section>` : ''}
       <div class="accs">
       ${total ? acc('cifras', 'Cifras del resumen', 'COP y USD', tablaResumen) : ''}
       ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) || sinClasificar().length ? '' : seccionPrestamos(R)}
@@ -1112,19 +1108,6 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
         </tbody></table></div>`)}
       ${acc('desglose', 'Desglose por categoría', 'COP y USD', `<div class="row between" style="padding-inline:8px"><span class="note">${S.showZeros ? 'Todas las categorías' : 'Solo las que tienen movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
         ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${desglose('Ahorros', R, 'ahorros', 'month')}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
-      ${tcCurs.length ? acc('tc', 'Tarjeta de crédito', tcCurs.map(c => R[c].saldoTC > 0.005 ? `Debes ${fmt(R[c].saldoTC, c)}` : R[c].saldoTC < -0.005 ? `A favor ${fmt(-R[c].saldoTC, c)}` : `${c} al día`).join(' · '), `<div class="card tight scrollx"><table class="tbl num"><thead><tr><th></th>${tcCurs.map(c => `<th class="cur">${c}</th>`).join('')}</tr></thead><tbody>
-          <tr><td>Compras con TC</td>${tcCurs.map(c => cell(R[c].comprasTC, c)).join('')}</tr>
-          <tr><td>Pagos a la TC</td>${tcCurs.map(c => cell(R[c].pagoTC, c)).join('')}</tr>
-          <tr class="strong"><td>Saldo pendiente<small>Al cierre del mes; negativo = saldo a favor</small></td>${tcCurs.map(c => cell(R[c].saldoTC, c)).join('')}</tr>
-          ${tcCurs.some(c => R[c].cupo) ? `<tr><td>Cupo disponible<small>Cupo de ${tcCurs.filter(c => R[c].cupo).map(c => fmt(R[c].cupo, c)).join(' / ')}</small></td>${tcCurs.map(c => cell(R[c].cupoDisponible, c, true)).join('')}</tr>` : ''}
-        </tbody></table></div>`) : ''}
-      ${acc('debito', 'Cuenta débito', 'Cuadra con el banco', `<div class="card tight scrollx"><table class="tbl num">${head3('')}<tbody>
-          <tr><td>Traes de ${ant}<small>${CURS.map(c => R[c].saldoAnteriorReal ? `${c}: saldo real` : `${c}: calculado`).join(' · ')}</small></td>${CURS.map(c => cell(R[c].saldoAnterior, c, true)).join('')}</tr>
-          <tr><td>Saldo según la app<small>Al cierre de ${MONTHS[S.month - 1]}</small></td>${CURS.map(c => cell(R[c].debito, c, true)).join('')}</tr>
-          <tr><td>Saldo real del banco<small>Escríbelo para cuadrar</small></td>${CURS.map(c => `<td><input class="inp num mini" id="sr-${c}" data-saldo="${c}" data-mes="${k}" inputmode="decimal" placeholder="—" value="${Number.isFinite(R[c].debitoReal) ? esc(R[c].debitoReal.toLocaleString('es-CO')) : ''}" aria-label="Saldo real ${c}"></td>`).join('')}</tr>
-          <tr class="strong"><td>Diferencia<small>Lo que falta por anotar</small></td>${CURS.map(c => Number.isFinite(R[c].debitoReal) ? cell(R[c].debitoReal - R[c].debito, c, true) : '<td class="zero">—</td>').join('')}</tr>
-        </tbody></table></div>
-        <div class="note" style="padding-inline:8px">El saldo real que anotes aquí es el que traes al mes siguiente. Si no lo anotas, la app lo calcula.</div>`)}
       </div>`;
   }
 
