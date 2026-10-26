@@ -357,6 +357,8 @@ details.acc .actions, .loan .actions { flex-wrap: wrap; }
 .enter .rb-track i { animation: grow .8s cubic-bezier(.2,.7,.2,1) both; }
 body.locked .fab, body.locked nav.tabs { display: none; }
 body.locked .period { visibility: hidden; }
+.ojo { border: 0; background: var(--surface-2); color: var(--ink-2); width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; padding: 0; }
+.ojo[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
 .lock { display: grid; justify-items: center; gap: 12px; text-align: center; padding-block: 48px 24px; max-width: 340px; margin: 0 auto; }
 .lock h2 { font-size: 22px; }
 .lock-logo { border-radius: 50%; box-shadow: 0 8px 24px rgb(61 42 32 / .18); }
@@ -372,7 +374,7 @@ body.locked .period { visibility: hidden; }
   <header class="top">
     <div class="row between">
       <div class="brand"><img class="logo" src="logo.png" alt="" width="34" height="34">Cuentas de Vale</div>
-      <div class="sub" id="syncState">Conectando…</div>
+      <div class="row" style="gap:6px"><span class="sub" id="syncState">Conectando…</span><button type="button" class="ojo" id="ojo" aria-label="Ocultar valores" aria-pressed="false"></button></div>
     </div>
     <div class="row between">
       <div class="period">
@@ -600,7 +602,7 @@ body.locked .period { visibility: hidden; }
     cur: store.get('cur', 'USD'), tab: store.get('tab', 'mes'), showZeros: store.get('zeros', false),
     loaded: false, all: [], saldos: {},
     settings: DEFAULT_SETTINGS,
-    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, fPrest: false, fMedio: null, resAbierto: null, selBucket: null,
+    fCur: 'all', fType: 'all', fPend: false, fCat: null, fSin: false, fPrest: false, fMedio: null, resAbierto: null, selBucket: null, ocultar: store.get('ocultar', false),
     an: Object.assign({ modo: 'anio', ref: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`, desde: '', hasta: '' }, store.get('an', {})), categorias: null, open: store.get('open', {}),
     q: '', selMonth: null,
     cola: store.get('cola', []), // movimientos que no se pudieron guardar en la hoja
@@ -609,13 +611,17 @@ body.locked .period { visibility: hidden; }
   const $ = s => document.querySelector(s);
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmtCache = {};
-  const fmt = (n, cur) => {
+  // Modo privado: el botón del ojo oculta el dinero ($ ****); porcentajes y gráficas siguen visibles.
+  const oculto = cur => (cur === 'USD' ? 'US$' : cur === 'COP' ? '$' : '') + ' ****';
+  const fmt = (n, cur) => S.ocultar ? oculto(cur) : fmtReal(n, cur);
+  const fmtReal = (n, cur) => {
     if (!CURS.includes(cur)) return (Number(n) || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 });
     fmtCache[cur] ||= new Intl.NumberFormat('es-CO', { style: 'currency', currency: cur, currencyDisplay: cur === 'USD' ? 'symbol' : 'narrowSymbol', minimumFractionDigits: cur === 'COP' ? 0 : 2, maximumFractionDigits: cur === 'COP' ? 0 : 2 });
     return fmtCache[cur].format(Math.abs(n) < 0.005 ? 0 : (n || 0));
   };
   const pct = v => v == null || !Number.isFinite(v) ? '—' : Math.round(v * 100) + ' %';
-  const compact = (n, cur) => {
+  const compact = (n, cur) => S.ocultar ? '**' : compactReal(n, cur);
+  const compactReal = (n, cur) => {
     const a = Math.abs(n);
     if (cur === 'COP') return a >= 1e6 ? (n / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + ' M' : a >= 1e3 ? Math.round(n / 1e3) + ' mil' : String(Math.round(n));
     return a >= 1e3 ? (n / 1e3).toLocaleString('es-CO', { maximumFractionDigits: 1 }) + 'k' : String(Math.round(n));
@@ -1337,7 +1343,10 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     });
   }
 
+  const OJO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const OJO_NO = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-2.4 3.3M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>';
   function render() {
+    const ojo = $('#ojo'); if (ojo) { ojo.innerHTML = S.ocultar ? OJO_NO : OJO; ojo.setAttribute('aria-pressed', String(S.ocultar)); ojo.setAttribute('aria-label', S.ocultar ? 'Mostrar valores' : 'Ocultar valores'); ojo.hidden = !CONN || LOCK.locked; }
     $('#periodLabel').textContent = S.tab === 'anio' ? periodo().label : `${MONTHS[S.month - 1]} ${S.year}`;
     document.querySelectorAll('nav.tabs [data-tab]').forEach(b => b.dataset.tab === S.tab ? b.setAttribute('aria-current', 'page') : b.removeAttribute('aria-current'));
     const v = $('#view');
@@ -1419,7 +1428,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     const valorImpuesto = () => { if (st.impuesto !== 'Si') return 0; const v = parseAmount($('#f-imp-valor')?.value, st.moneda); return Number.isFinite(v) && v > 0 ? v : 0; };
     const preview = () => {
       const n = parseAmount($('#f-monto').value, st.moneda), iv = valorImpuesto();
-      $('#amtPrev').textContent = !Number.isFinite(n) || n === 0 ? '' : iv ? `Total: ${fmt(n, st.moneda)} + ${fmt(iv, st.moneda)} de impuesto = ${fmt(n + iv, st.moneda)} ${st.moneda}` : fmt(n, st.moneda) + ' ' + st.moneda;
+      $('#amtPrev').textContent = !Number.isFinite(n) || n === 0 ? '' : iv ? `Total: ${fmtReal(n, st.moneda)} + ${fmtReal(iv, st.moneda)} de impuesto = ${fmtReal(n + iv, st.moneda)} ${st.moneda}` : fmtReal(n, st.moneda) + ' ' + st.moneda;
     };
     const defDate = S.month === now.getMonth() + 1 && S.year === now.getFullYear() ? todayStr() : ym(S.year, S.month) + '-01';
     // Con impuesto «Sí», el monto de arriba es el valor sin impuesto; el total = monto + impuesto.
@@ -1506,6 +1515,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; if (d.scope === 'rango') { const p = periodo(); Object.assign(S.fCat, { desde: p.desde, hasta: p.hasta, label: p.label }); } S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.fmedio) { S.fMedio = d.fmedio; S.fCur = S.cur; S.fType = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.clearmedio) { S.fMedio = null; render(); return; }
+    if (b.id === 'ojo') { S.ocultar = !S.ocultar; store.set('ocultar', S.ocultar); Object.keys(cifras).forEach(k => delete cifras[k]); render(); toast(S.ocultar ? 'Valores ocultos' : 'Valores visibles'); return; }
     if (d.otras) { S.verOtras = !S.verOtras; render(); return; }
     if (d.resabre) { S.resAbierto = S.resAbierto === d.resabre ? null : d.resabre; render(); return; }
     if (d.gotipo) { S.fType = d.gotipo; S.fCur = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
