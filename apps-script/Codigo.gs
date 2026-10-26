@@ -12,6 +12,7 @@
  *   K  EXTRAORDINARIO    («Si» si ese gasto es extraordinario)
  *   L  PRÉSTAMO AHORROS  («Préstamo» o «Préstamo: <fondo>» si sacaste de tus ahorros y lo vas
  *                         a devolver; «Devolución» si es un ahorro que repone ese préstamo)
+ *   M  VALOR IMPUESTO    (cuánto del MONTO fue impuesto, si IMPUESTO es «Si»; el MONTO ya lo incluye)
  * Los ajustes de la app (cupo de la TC, topes, saldos reales) se guardan dentro de este
  * programa, no en la hoja.
  *
@@ -29,11 +30,11 @@ const HOJA_LOG = 'Transactions Log';
 const HOJA_SETUP = 'Setup';
 const FILA_TITULOS = 4;           // fila con FECHA, TIPO, CATEGORIA…
 const PRIMERA_FILA = 5;           // primera fila de movimientos
-const COL = { fecha: 1, tipo: 2, categoria: 3, monto: 4, impuesto: 5, medio: 6, moneda: 7, detalle: 8, id: 9, reembolsaA: 10, extra: 11, prestamo: 12 };
-const N_COLS = 12;
-const TITULOS_APP = ['ID', 'REEMBOLSO DE', 'EXTRAORDINARIO', 'PRÉSTAMO AHORROS'];
+const COL = { fecha: 1, tipo: 2, categoria: 3, monto: 4, impuesto: 5, medio: 6, moneda: 7, detalle: 8, id: 9, reembolsaA: 10, extra: 11, prestamo: 12, impuestoValor: 13 };
+const N_COLS = 13;
+const TITULOS_APP = ['ID', 'REEMBOLSO DE', 'EXTRAORDINARIO', 'PRÉSTAMO AHORROS', 'VALOR IMPUESTO'];
 const TIPOS = ['Ingreso', 'Gastos Fijos', 'Gastos Variables', 'Ahorros', 'Deudas'];
-const VERSION = 3; // la app avisa si el programa pegado en la hoja es más viejo
+const VERSION = 4; // la app avisa si el programa pegado en la hoja es más viejo
 
 /* ---------- instalación ---------- */
 function configurar() {
@@ -169,6 +170,8 @@ function cargar_() {
     const re = String(v[COL.reembolsaA - 1]).trim();
     if (re) t.reembolsaA = re;
     if (String(v[COL.extra - 1]).trim().toLowerCase() === 'si') t.extra = true;
+    const iv = Number(v[COL.impuestoValor - 1]);
+    if (iv > 0) t.impuestoValor = iv;
     const pr = String(v[COL.prestamo - 1]).trim();
     if (pr) t.prestamo = pr;
     return t;
@@ -187,7 +190,7 @@ function guardarMovs_(movs) {
     if (!t || !/^\d{4}-\d{2}-\d{2}$/.test(String(t.fecha))) throw new Error('Falta la fecha');
     const fecha = Utilities.parseDate(t.fecha, zona_(), 'yyyy-MM-dd');
     const valores = [fecha, t.tipo, t.categoria, Number(t.monto) || 0, t.impuesto || 'No Aplica', t.medio || 'NA', t.moneda, t.detalle || ''];
-    const extras = [t.reembolsaA || '', t.extra === true ? 'Si' : '', /^(Préstamo|Devolución)/.test(String(t.prestamo || '')) ? String(t.prestamo) : ''];
+    const extras = [t.reembolsaA || '', t.extra === true ? 'Si' : '', /^(Préstamo|Devolución)/.test(String(t.prestamo || '')) ? String(t.prestamo) : '', Number(t.impuestoValor) > 0 ? Number(t.impuestoValor) : ''];
     const actual = porId[String(t.id)];
     const conservarMonto = actual && Math.abs((Number(actual.v[COL.monto - 1]) || 0) - valores[3]) < 0.005;
     const fila = actual ? actual.fila : Math.max(h.getLastRow() + 1, PRIMERA_FILA);

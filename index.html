@@ -741,7 +741,7 @@ body.locked .period { visibility: hidden; }
     });
     return writing;
   }
-  const VERSION_GS = 3; // versión de apps-script/Codigo.gs que esta app necesita
+  const VERSION_GS = 4; // versión de apps-script/Codigo.gs que esta app necesita
   const gsViejo = () => S.fresco && S.versionGs < VERSION_GS;
   const nuevoId = () => 'm' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   const limpiarMov = t => { const o = { ...t }; delete o.anio; delete o.mes; delete o._sinGuardar; return o; };
@@ -795,7 +795,7 @@ body.locked .period { visibility: hidden; }
     const isIn = moneyIn(t);
     const first = isReembolso(t) && t.reembolsaA ? `Reembolso de ${t.reembolsaA}` : (t.categoria || `${t.tipo || 'Movimiento'} sin categoría`);
     const sub = [t.detalle, t.medio && t.medio !== 'NA' ? t.medio.replace('Tarjeta ', 'T. ') : ''].filter(Boolean).join(' · ');
-    const pills = (impVal(t) === 'No' ? ' <span class="pill warn">Impuesto pendiente</span>' : '')
+    const pills = (impVal(t) === 'No' ? ' <span class="pill warn">Impuesto pendiente</span>' : impVal(t) === 'Si' && Number(t.impuestoValor) > 0 ? ` <span class="pill">Impuesto ${esc(fmt(t.impuestoValor, t.moneda))}</span>` : '')
       + (isExtra(t, S.settings) ? ' <span class="pill">Extraordinario</span>' : '')
       + (t.tipo === 'Deudas' && t.categoria === DEUDA_TC ? ' <span class="pill">Ya no se usa</span>' : '')
       + (t._sinGuardar ? ' <span class="pill warn">Sin guardar</span>' : '')
@@ -1091,7 +1091,7 @@ body.locked .period { visibility: hidden; }
       <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
       ${total ? resumenMes : ''}
       ${total ? '' : `<div class="card" style="margin-top:12px"><div class="empty"><b>Sin movimientos en ${MONTHS[S.month - 1]}</b><span>Toca <strong>Anotar</strong> para registrar el primero, o desliza hacia la derecha para ver meses anteriores.</span></div></div>`}
-${gsViejo() ? `<section class="block"><div class="notice warn" style="display:block"><b>Actualiza el programa de Google.</b> El que tienes pegado en tu hoja es una versión anterior: los préstamos de tus ahorros no se guardan. Pega el archivo <b>Codigo.gs</b> de Descargas en Extensiones → Apps Script y haz Implementar → Gestionar implementaciones → ✏️ → Nueva versión.</div></section>` : ''}${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
+${gsViejo() ? `<section class="block"><div class="notice warn" style="display:block"><b>Actualiza el programa de Google.</b> El que tienes pegado en tu hoja es una versión anterior: algunas cosas nuevas (como el valor del impuesto) no se guardan. Pega el archivo <b>Codigo.gs</b> de Descargas en Extensiones → Apps Script y haz Implementar → Gestionar implementaciones → ✏️ → Nueva versión.</div></section>` : ''}${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
@@ -1311,6 +1311,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       moneda: CURS.includes(tx?.moneda) ? tx.moneda : store.get('lastCur', 'USD'),
       medio: tx?.medio || store.get('lastMedio', 'Tarjeta de Crédito'),
       impuesto: tx ? impVal(tx) : store.get('lastImp', 'Si'),
+      impuestoValor: tx && impVal(tx) === 'Si' && Number(tx.impuestoValor) > 0 ? Number(tx.impuestoValor) : '',
       extra: tx?.extra === true,
       reembolsaA: tx?.reembolsaA || '', reembolsaTipo: tx?.reembolsaTipo || '',
       prestamo: tx ? esPrestamo(tx) : false, fondo: tx ? fondoDe(tx) : '', devolucion: tx ? esDevolucion(tx) : false,
@@ -1353,13 +1354,20 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       root.querySelector('#curPick').innerHTML = CURS.map(c => `<button type="button" data-st-cur="${c}" aria-pressed="${st.moneda === c}">${c}</button>`).join('');
       root.querySelector('#medioPick').innerHTML = medios.map(m => `<button type="button" class="chip" data-st-medio="${esc(m)}" aria-pressed="${st.medio === m}">${esc(m === 'NA' ? 'No aplica' : m)}</button>`).join('');
       root.querySelector('#impPick').innerHTML = IMP.map(([v, l]) => `<button type="button" data-st-imp="${v}" aria-pressed="${st.impuesto === v}">${l}</button>`).join('');
-      root.querySelector('#impHelp').textContent = st.impuesto === 'No' ? 'Quedará marcado como «Impuesto pendiente» hasta que lo cambies a Sí.' : '';
+      root.querySelector('#impHelp').textContent = st.impuesto === 'No' ? 'Quedará marcado como «Impuesto pendiente» hasta que lo cambies a Sí.' : st.impuesto === 'Si' ? 'Escribe arriba el monto sin impuesto y aquí el impuesto: se guardan sumados.' : '';
+      root.querySelector('#impValField').hidden = st.impuesto !== 'Si';
+      root.querySelector('#f-monto').setAttribute('aria-label', st.impuesto === 'Si' ? 'Monto sin impuesto' : 'Monto');
       root.querySelector('#curSym').textContent = st.moneda === 'COP' ? '$' : 'US$';
       preview();
     };
-    const preview = () => { const n = parseAmount($('#f-monto').value, st.moneda); $('#amtPrev').textContent = Number.isFinite(n) && n !== 0 ? fmt(n, st.moneda) + ' ' + st.moneda : ''; };
+    const valorImpuesto = () => { if (st.impuesto !== 'Si') return 0; const v = parseAmount($('#f-imp-valor')?.value, st.moneda); return Number.isFinite(v) && v > 0 ? v : 0; };
+    const preview = () => {
+      const n = parseAmount($('#f-monto').value, st.moneda), iv = valorImpuesto();
+      $('#amtPrev').textContent = !Number.isFinite(n) || n === 0 ? '' : iv ? `Total: ${fmt(n, st.moneda)} + ${fmt(iv, st.moneda)} de impuesto = ${fmt(n + iv, st.moneda)} ${st.moneda}` : fmt(n, st.moneda) + ' ' + st.moneda;
+    };
     const defDate = S.month === now.getMonth() + 1 && S.year === now.getFullYear() ? todayStr() : ym(S.year, S.month) + '-01';
-    const startAmt = tx && Number(tx.monto) ? tx.monto : (st.cuota || '');
+    // Con impuesto «Sí», el monto de arriba es el valor sin impuesto; el total = monto + impuesto.
+    const startAmt = tx && Number(tx.monto) ? Math.round((Number(tx.monto) - (Number(st.impuestoValor) || 0)) * 100) / 100 : (st.cuota || '');
     root.innerHTML = `<div class="scrim" id="scrim"><form class="sheet" id="txForm" aria-label="${edit ? 'Editar movimiento' : 'Nuevo movimiento'}" novalidate>
       <div class="grab"></div>
       <div class="row between"><h3>${edit ? 'Editar movimiento' : 'Nuevo movimiento'}</h3><div class="seg" id="curPick" role="group" aria-label="Moneda"></div></div>
@@ -1374,7 +1382,8 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       <div class="field"><label for="f-detalle">Detalles</label><input class="inp" id="f-detalle" placeholder="Ej: Compra en D1" autocomplete="off" value="${esc(tx?.detalle || (preset === 'prestamo' ? 'Préstamo de mis ahorros' : preset === 'devolucion' ? 'Devolución a mis ahorros' : ''))}"></div>
       <div class="field"><label for="f-fecha">Fecha</label><input class="inp" type="date" id="f-fecha" value="${esc(tx ? tx.fecha : defDate)}"></div>
       <div class="field" id="exField" hidden><label class="toggle" for="f-extra">Gasto extraordinario<input type="checkbox" id="f-extra"></label><div class="note" id="exHelp"></div></div>
-      <div class="field"><span class="lab">Impuesto</span><div class="seg full" id="impPick" role="group" aria-label="Impuesto"></div><div class="note" id="impHelp"></div></div>
+      <div class="field"><span class="lab">Impuesto</span><div class="seg full" id="impPick" role="group" aria-label="Impuesto"></div><div class="note" id="impHelp"></div>
+        <div id="impValField" hidden style="display:grid;gap:6px;margin-top:6px"><label for="f-imp-valor">¿Cuánto fue el impuesto?</label><input class="inp num" id="f-imp-valor" inputmode="decimal" placeholder="0" autocomplete="off" value="${esc(st.impuestoValor ? String(st.impuestoValor) : '')}"></div></div>
       <div class="field"><span class="lab">Medio de pago</span><div class="chips" id="medioPick"></div></div>
       <div class="err" id="formErr" role="alert"></div>
       <div class="actions">${edit ? `<button type="button" class="btn danger" id="delBtn">Eliminar</button>` : ''}<button type="button" class="btn" id="cancelBtn">Cancelar</button><button type="submit" class="btn primary" id="saveBtn">${edit ? 'Guardar cambios' : 'Guardar'}</button></div>
@@ -1385,6 +1394,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     $('#scrim').addEventListener('click', e => { if (e.target.id === 'scrim') close(); });
     $('#cancelBtn').onclick = close;
     $('#f-monto').addEventListener('input', preview);
+    $('#f-imp-valor').addEventListener('input', preview);
     $('#f-extra').addEventListener('change', e => { st.extra = e.target.checked; });
     $('#txForm').addEventListener('click', e => {
       const b = e.target.closest('button'); if (!b) return;
@@ -1411,6 +1421,8 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     $('#txForm').addEventListener('submit', async e => {
       e.preventDefault();
       let monto = Math.round(parseAmount($('#f-monto').value, st.moneda) * 100) / 100;
+      const impuestoValor = Math.round(valorImpuesto() * 100) / 100;
+      if (Number.isFinite(monto) && monto !== 0 && impuestoValor) monto = Math.round((monto + impuestoValor) * 100) / 100;
       const fecha = $('#f-fecha').value, err = $('#formErr');
       if (!Number.isFinite(monto) || monto === 0) { err.textContent = 'Escribe un monto.'; $('#f-monto').focus(); return; }
       if (!st.categoria) { err.textContent = 'Elige una categoría.'; return; }
@@ -1419,6 +1431,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       const data = { fecha, anio: Number(fecha.slice(0, 4)), mes: fecha.slice(0, 7), tipo: st.tipo, categoria: st.categoria, monto, moneda: st.moneda,
         medio: st.medio, impuesto: st.impuesto, detalle: $('#f-detalle').value.trim(), creado: tx?.creado || new Date().toISOString() };
       if (isRe) data.reembolsaA = st.reembolsaA;
+      if (st.impuesto === 'Si' && impuestoValor) data.impuestoValor = impuestoValor;
       if (GASTO.has(st.tipo) && st.extra && !(S.settings.extraCats || []).includes(st.categoria)) data.extra = true;
       if (st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS && st.prestamo) data.prestamo = 'Préstamo' + (st.fondo ? ': ' + st.fondo : '');
       if (st.tipo === 'Ahorros' && st.devolucion) data.prestamo = 'Devolución';
@@ -1478,7 +1491,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     if (d.nuevo) { if (d.moneda) { S.cur = d.moneda; store.set('cur', S.cur); } openSheet(null, d.nuevo); return; }
     if (b.id === 'fab') { if (CONN && S.loaded) openSheet(); else toast('Primero conecta la app con tu hoja de Google.'); return; }
     if (b.id === 'exportCsv') {
-      const cols = [['fecha', 'FECHA'], ['tipo', 'TIPO'], ['categoria', 'CATEGORIA'], ['monto', 'MONTO'], ['impuesto', 'IMPUESTO'], ['medio', 'MEDIO DE PAGO'], ['moneda', 'MONEDA'], ['detalle', 'DETALLES'], ['reembolsaA', 'REEMBOLSO DE'], ['extra', 'EXTRAORDINARIO'], ['prestamo', 'PRÉSTAMO AHORROS']];
+      const cols = [['fecha', 'FECHA'], ['tipo', 'TIPO'], ['categoria', 'CATEGORIA'], ['monto', 'MONTO'], ['impuesto', 'IMPUESTO'], ['medio', 'MEDIO DE PAGO'], ['moneda', 'MONEDA'], ['detalle', 'DETALLES'], ['reembolsaA', 'REEMBOLSO DE'], ['extra', 'EXTRAORDINARIO'], ['prestamo', 'PRÉSTAMO AHORROS'], ['impuestoValor', 'VALOR IMPUESTO']];
       const q = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
       const rows = [...S.all].sort((a, b) => a.fecha.localeCompare(b.fecha)).map(t => cols.map(([c]) => q(c === 'impuesto' ? impVal(t) : c === 'extra' ? (isExtra(t, S.settings) ? 'Si' : '') : t[c])).join(','));
       descargar(`cuentas-vale-${todayStr()}.csv`, '\ufeff' + [cols.map(c => c[1]).join(','), ...rows].join('\n'), 'text/csv;charset=utf-8');
