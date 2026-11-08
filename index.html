@@ -584,10 +584,23 @@ body.locked .period { visibility: hidden; }
       if (!Object.entries(r.porCat).some(([c, v]) => esGasto(c) && Math.abs(v) > 0.005)) continue;
       meses.push(r); claves.push(k);
     }
+    // Cada categoría se promedia desde el primer mes en que aparece en tu registro: un gasto fijo que
+    // empezaste a pagar hace poco no se diluye con los meses en que todavía no existía.
+    const primero = {};
+    for (const t of all) {
+      if (t.moneda !== cur || !t.mes || !GASTO.has(t.tipo)) continue;
+      const k = t.tipo + '|' + t.categoria;
+      if (!primero[k] || t.mes < primero[k]) primero[k] = t.mes;
+    }
+    const suma = {}, cuenta = {};
+    meses.forEach((r, i) => {
+      const mesK = claves[i];
+      const ks = new Set([...Object.keys(r.porCat).filter(esGasto), ...Object.keys(primero).filter(k => esGasto(k) && primero[k] <= mesK)]);
+      for (const k of ks) { if (primero[k] && primero[k] > mesK) continue; suma[k] = (suma[k] || 0) + (r.porCat[k] || 0); cuenta[k] = (cuenta[k] || 0) + 1; }
+    });
     const prom = {};
-    for (const r of meses) for (const [k, v] of Object.entries(r.porCat)) if (esGasto(k)) prom[k] = (prom[k] || 0) + v;
-    for (const k of Object.keys(prom)) prom[k] /= meses.length;
-    return { prom, n: meses.length, meses: claves.reverse() };
+    for (const k of Object.keys(suma)) prom[k] = suma[k] / cuenta[k];
+    return { prom, n: meses.length, meses: claves.reverse(), mesesPorCat: cuenta };
   }
 
   const TYPES = [
