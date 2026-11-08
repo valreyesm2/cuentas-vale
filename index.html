@@ -745,7 +745,7 @@ body.locked .period { visibility: hidden; }
   function viewPin() {
     const titulo = LOCK.mode === 'crear' ? 'Crea un PIN de 4 dígitos' : LOCK.mode === 'confirmar' ? 'Repite tu PIN' : 'Escribe tu PIN';
     const nota = LOCK.mode === 'abrir' ? 'Tus cuentas están bloqueadas en este dispositivo.' : 'Se pedirá cada vez que abras la app en este dispositivo. No se guarda en ningún otro lado.';
-    return `<section class="lock"><img class="lock-logo" src="logo.png" alt="Logo VR" width="112" height="112"><h2>${titulo}</h2><div class="note">${nota}</div>
+    return `<section class="lock"><img class="lock-logo" src="logo.png" alt="Logo ST" width="112" height="112"><h2>${titulo}</h2><div class="note">${nota}</div>
       <input id="pinIn" class="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" aria-label="${titulo}">
       <div class="err" role="alert">${esc(LOCK.msg)}</div>
       ${LOCK.mode === 'abrir' ? '<button type="button" class="chip" id="olvidePin">Olvidé mi PIN</button>' : ''}</section>`;
@@ -1351,7 +1351,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   }
 
   function viewConectar() {
-    return `<section class="block"><img class="lock-logo" src="logo.png" alt="Logo VR" width="112" height="112" style="justify-self:center"><h2>Conecta tu hoja de Google</h2>
+    return `<section class="block"><img class="lock-logo" src="logo.png" alt="Logo ST" width="112" height="112" style="justify-self:center"><h2>Conecta tu hoja de Google</h2>
       ${store.get('aviso', null) ? `<div class="notice warn">${esc(store.get('aviso', ''))}</div>` : ''}
       <div class="note">Se hace una sola vez en cada dispositivo. <b>En iPhone, la app de la pantalla de inicio y Safari son dispositivos distintos</b>: hay que conectar cada uno.</div>
       <div class="note">Lo más fácil: en el computador ve a Ajustes → <b>Copiar enlace de conexión</b> y pégalo aquí abajo (con el mismo Apple ID, lo que copias en el Mac se pega en el iPhone). Así no necesitas escribir la clave.</div>
