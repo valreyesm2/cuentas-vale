@@ -1206,7 +1206,6 @@ body.locked .period { visibility: hidden; }
 ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:block"><b>Actualiza el programa de Google.</b> El que tienes pegado en tu hoja es una versión anterior: algunas cosas nuevas (como el valor del impuesto) no se guardan. Pega el archivo <b>Codigo.gs</b> de Descargas en Extensiones → Apps Script y haz Implementar → Gestionar implementaciones → ✏️ → Nueva versión.</div></section>` : ''}${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
-      ${seccionFondos(ym(S.year, S.month) + '-01', ym(S.year, S.month) + '-' + pad(new Date(S.year, S.month, 0).getDate()), 'este mes')}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
       ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? seccionPrestamos(R) : ''}
       <div class="accs">
@@ -1222,7 +1221,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
           <tr><td>Reembolsos recibidos<small>Ya descontados de tus gastos</small></td>${CURS.map(c => cell(R[c].reembolsos, c)).join('')}</tr>
         </tbody></table></div>`)}
       ${acc('desglose', 'Desglose por categoría', 'COP y USD', `<div class="row between" style="padding-inline:8px"><span class="note">${S.showZeros ? 'Todas las categorías' : 'Solo las que tienen movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
-        ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
+        ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${desglose('Ahorros', R, 'ahorros', 'month')}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
       </div>`;
   }
 
