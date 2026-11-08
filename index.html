@@ -216,6 +216,7 @@ nav.tabs button[aria-current="page"] { color: var(--accent); }
 .setrow input[type=checkbox] { justify-self: end; width: 22px; height: 22px; accent-color: var(--accent); }
 
 .tbl td.good { color: var(--pos); }
+.tbl td small.good { color: var(--pos); } .tbl td small.neg { color: var(--neg); }
 .tbl.tap tr[data-fcat], .tbl.tap tr[data-gotipo] { cursor: pointer; }
 .tbl.tap tr[data-gotipo]:hover td { background: var(--surface-2); }
 .tbl .go { color: var(--muted); }
@@ -1117,17 +1118,21 @@ body.locked .period { visibility: hidden; }
     return `<div class="rbars">${filas}${pagado}${totales}</div>`;
   }
 
-  function seccionFondos(hasta, titulo) {
+  // «Tus ahorros»: una sola tabla con el acumulado de cada fondo y, debajo, lo que entró o salió en el período.
+  function seccionFondos(desde, hasta, etiqueta) {
+    const antes = (() => { const d = deIso(desde); d.setDate(d.getDate() - 1); return iso(d); })();
     const F = Object.fromEntries(CURS.map(c => [c, ahorrosPorFondo(S.all, c, hasta)]));
-    const fondos = [...new Set([...cats('Ahorros'), ...CURS.flatMap(c => Object.keys(F[c]))])].filter(f => CURS.some(c => Math.abs(F[c][f] || 0) > 0.005));
+    const F0 = Object.fromEntries(CURS.map(c => [c, ahorrosPorFondo(S.all, c, antes)]));
+    const fondos = [...new Set([...cats('Ahorros'), ...CURS.flatMap(c => [...Object.keys(F[c]), ...Object.keys(F0[c])])])].filter(f => CURS.some(c => Math.abs(F[c][f] || 0) > 0.005 || Math.abs((F[c][f] || 0) - (F0[c][f] || 0)) > 0.005));
     if (!fondos.length) return '';
-    const tot = Object.fromEntries(CURS.map(c => [c, Object.values(F[c]).reduce((a, b) => a + b, 0)]));
-    return `<section class="block"><h2>${dotH('var(--s-aho)')}${titulo}</h2>
+    const suma = o => Object.values(o).reduce((a, b) => a + b, 0);
+    const celda = (c, acum, mov) => `<td class="${Math.abs(acum) < 0.005 ? 'zero' : acum < 0 ? 'neg' : ''}">${fmt(acum, c)}${Math.abs(mov) > 0.005 ? `<small class="${mov < 0 ? 'neg' : 'good'}">${mov > 0 ? '+' : '−'}${fmt(Math.abs(mov), c)} ${etiqueta}</small>` : ''}</td>`;
+    return `<section class="block"><h2>${dotH('var(--s-aho)')}Tus ahorros</h2>
       <div class="card tight scrollx"><table class="tbl num">${head3('Fondo')}<tbody>
-        ${fondos.map(f => `<tr><td>${esc(f)}${f === 'Retiros sin fondo asignado' ? '<small>Lo que sacaste sin decir de qué fondo</small>' : ''}</td>${CURS.map(c => cell(F[c][f] || 0, c, true)).join('')}</tr>`).join('')}
-        <tr class="total"><td>Total ahorrado</td>${CURS.map(c => cell(tot[c], c, true)).join('')}</tr>
+        ${fondos.map(f => `<tr data-fcat="Ahorros|${esc(f)}" data-scope="rango-ahorro"><td>${esc(f)}${f === 'Retiros sin fondo asignado' ? '<small>Lo que sacaste sin decir de qué fondo</small>' : ''}</td>${CURS.map(c => celda(c, F[c][f] || 0, (F[c][f] || 0) - (F0[c][f] || 0))).join('')}</tr>`).join('')}
+        <tr class="total"><td>Total ahorrado</td>${CURS.map(c => celda(c, suma(F[c]), suma(F[c]) - suma(F0[c]))).join('')}</tr>
       </tbody></table></div>
-      <div class="note">Acumulado hasta el ${esc(fechaCorta(hasta))}: aportes menos retiros de cada fondo.</div></section>`;
+      <div class="note">Acumulado al ${esc(fechaCorta(hasta))} (aportes menos retiros). Debajo, lo que entró o salió ${etiqueta}.</div></section>`;
   }
 
   function viewMes() {
@@ -1201,7 +1206,7 @@ body.locked .period { visibility: hidden; }
 ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:block"><b>Actualiza el programa de Google.</b> El que tienes pegado en tu hoja es una versión anterior: algunas cosas nuevas (como el valor del impuesto) no se guardan. Pega el archivo <b>Codigo.gs</b> de Descargas en Extensiones → Apps Script y haz Implementar → Gestionar implementaciones → ✏️ → Nueva versión.</div></section>` : ''}${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
-      ${seccionFondos(ym(S.year, S.month) + '-' + pad(new Date(S.year, S.month, 0).getDate()), 'Tus ahorros por fondo')}
+      ${seccionFondos(ym(S.year, S.month) + '-01', ym(S.year, S.month) + '-' + pad(new Date(S.year, S.month, 0).getDate()), 'este mes')}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
       ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? seccionPrestamos(R) : ''}
       <div class="accs">
@@ -1217,7 +1222,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
           <tr><td>Reembolsos recibidos<small>Ya descontados de tus gastos</small></td>${CURS.map(c => cell(R[c].reembolsos, c)).join('')}</tr>
         </tbody></table></div>`)}
       ${acc('desglose', 'Desglose por categoría', 'COP y USD', `<div class="row between" style="padding-inline:8px"><span class="note">${S.showZeros ? 'Todas las categorías' : 'Solo las que tienen movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
-        ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${desglose('Ahorros', R, 'ahorros', 'month')}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
+        ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
       </div>`;
   }
 
@@ -1228,7 +1233,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     else if (S.fCat) {
       const [tp, ca] = S.fCat.key.split('|');
       list = S.all.filter(t => (S.fCat.scope === 'rango' ? enRango(t, S.fCat.desde, S.fCat.hasta) : S.fCat.scope === 'year' ? t.anio === S.year : t.mes === ym(S.year, S.month)) &&
-        ((t.tipo === tp && t.categoria === ca) || (ca === IMP_PAGO_TC && esPagoTC(t) && impDe(t) > 0) || (isReembolso(t) && tipoRe(t, S.settings) === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
+        ((t.tipo === tp && t.categoria === ca) || (S.fCat.fondo && isLegacyRetiro(t) && (fondoDe(t) || 'Retiros sin fondo asignado') === ca) || (ca === IMP_PAGO_TC && esPagoTC(t) && impDe(t) > 0) || (isReembolso(t) && tipoRe(t, S.settings) === tp && t.reembolsaA === ca) || (tp === 'Ahorros' && ca === RETIRO && isLegacyRetiro(t))));
     } else list = q ? S.all.filter(t => [t.categoria, t.detalle, t.tipo, t.medio, t.moneda, t.reembolsaA].join(' ').toLowerCase().includes(q)) : S.all.filter(t => t.mes === ym(S.year, S.month));
     const pendAll = S.all.filter(t => impVal(t) === 'No');
     if (S.fPend) list = (q || S.fCat) ? list.filter(t => impVal(t) === 'No') : pendAll;
@@ -1286,11 +1291,10 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       <div class="duo">${CURS.map(c => `<div class="bal"><span class="eyebrow">${c}</span><span class="v num ${R[c].tasaAhorro < 0 ? 'neg' : ''}">${pct(R[c].tasaAhorro)}</span><span class="note">${fmt(R[c].ahorros, c)} de ${fmt(R[c].ingreso, c)}</span></div>`).join('')}</div>
       <section class="block"><h2>Resumen del período</h2>
         <div class="card tight scrollx"><table class="tbl num">${head3('Tipo')}<tbody>${resumen}
-          <tr><td>Ahorros acumulados<small>Hasta el ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(R[c].ahorrosAcum, c, true)).join('')}</tr>
           <tr><td>Debes en la TC<small>Al ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(Math.max(0, R[c].saldoTC), c)).join('')}</tr>
           <tr><td>Le debes a tus ahorros<small>Al ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(Math.max(0, R[c].debesAhorros), c)).join('')}</tr>
         </tbody></table></div></section>
-      ${seccionFondos(P.hasta, 'Tus ahorros por fondo')}
+      ${seccionFondos(P.desde, P.hasta, 'en el período')}
       <section class="block"><div class="sechead"><h2>Gráficas en ${cur}</h2>${curSeg('Moneda de las gráficas')}</div>
         <div class="chart"><h3 class="ch">Gastos e ingreso ${P.porMes ? 'mes a mes' : unidad === 'Día' ? 'día a día' : 'semana a semana'}</h3>
           <div class="legend"><span><span class="dot" style="background:var(--s-fijos)"></span>Gastos fijos</span><span><span class="dot" style="background:var(--s-var)"></span>Gastos variables</span><span><span class="sw-line" style="background:var(--s-ing)"></span>Ingreso</span></div>
@@ -1311,7 +1315,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       ${desglose('Ingreso', R, 'ingreso', 'rango')}
       ${desglose('Gastos Fijos', R, 'fijos', 'rango')}
       ${desglose('Gastos Variables', R, 'variables', 'rango')}
-      ${desglose('Ahorros', R, 'ahorros', 'rango', { title: 'Ahorros del período' })}`;
+`;
   }
 
   function viewConectar() {
@@ -1552,6 +1556,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
   document.addEventListener('click', async e => {
     const b = e.target.closest('button, [data-bucket], tr[data-fcat], [data-gotipo]'); if (!b || b.closest('#sheetRoot')) return;
     const d = b.dataset;
+    if (d.fcat && d.scope === 'rango-ahorro') { const ab = S.tab === 'anio' ? periodo() : { desde: ym(S.year, S.month) + '-01', hasta: ym(S.year, S.month) + '-31', label: MONTHS[S.month - 1] + ' ' + S.year }; S.fCat = { key: d.fcat, scope: 'rango', desde: ab.desde, hasta: ab.hasta, label: ab.label, fondo: true }; S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.fcat) { S.fCat = { key: d.fcat, scope: d.scope || 'month' }; if (d.scope === 'rango') { const p = periodo(); Object.assign(S.fCat, { desde: p.desde, hasta: p.hasta, label: p.label }); } S.fPend = false; S.fType = 'all'; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.fmedio) { S.fMedio = d.fmedio; S.fCur = S.cur; S.fType = 'all'; S.fCat = null; S.fPend = false; S.fSin = false; S.fPrest = false; S.q = ''; S.tab = 'movs'; render(); $('#scroller').scrollTo(0, 0); return; }
     if (d.clearmedio) { S.fMedio = null; render(); return; }
