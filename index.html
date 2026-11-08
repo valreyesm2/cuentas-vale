@@ -1224,33 +1224,10 @@ body.locked .period { visibility: hidden; }
       const d = (r.e - r.p) / r.p; const up = d > 0.1, down = d < -0.1;
       return `<td class="${up ? 'neg' : down ? 'good' : 'zero'}">${up ? '▲ ' : down ? '▼ ' : ''}${d > 0 ? '+' : ''}${Math.round(d * 100)} %</td>`;
     };
-    // Resumen del mes, siempre visible: cada cifra con su % del ingreso; toca una fila para ver esos movimientos.
-    const pctIng = (v, c) => R[c].ingreso > 0.005 && Math.abs(v) > 0.005 ? `<small>${Math.round(v / R[c].ingreso * 100)} % del ingreso</small>` : '';
-    const fila = (label, key, opts = {}) => `<tr class="${opts.cls || ''}" ${opts.tipo ? `data-gotipo="${opts.tipo}"` : ''}><td>${opts.color ? `<span class="dot" style="background:${opts.color};display:inline-block;margin-right:7px"></span>` : ''}${label}${opts.tipo ? ' <span class="go">›</span>' : ''}${opts.nota ? `<small>${opts.nota}</small>` : ''}</td>${CURS.map(c => {
-        const v = R[c][key], signed = opts.signed;
-        return `<td class="${Math.abs(v) < 0.005 ? 'zero' : signed && v < 0 ? 'neg' : ''}">${fmt(v, c)}${opts.pct ? pctIng(v, c) : ''}</td>`;
-      }).join('')}</tr>`;
-    const hayTraes = CURS.some(c => Math.abs(R[c].traes) > 0.005), hayAho = CURS.some(c => R[c].prestadoMes > 0.005 || R[c].devueltoMes > 0.005);
     const mesNom = MONTHS[S.month - 1];
     const resumenMes = `<section class="block"><div class="sechead"><h2>Resumen del mes</h2>${curSeg('Moneda del resumen')}</div>
       ${resumenBarras(R[S.cur], mensual(S.all, S.month === 1 ? S.year - 1 : S.year, S.month === 1 ? 12 : S.month - 1, S.cur, S.settings, S.saldos), S.cur, ant)}
       <div class="note">Toca un tipo para ver en qué categorías se fue; toca una categoría para ver sus movimientos.${R[S.cur].prestadoMes > 0.005 ? ` Incluye ${fmt(R[S.cur].prestadoMes, S.cur)} que tomaste de tus ahorros.` : ''}</div></section>`;
-    const tablaResumen = `<div class="card tight scrollx"><table class="tbl num tap resumen">${head3(MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1))}<tbody>
-        ${hayTraes ? fila('Traes de ' + ant, 'traes', { nota: 'Saldo en débito', signed: true }) : ''}
-        ${fila('Ingresos', 'ingreso', { color: 'var(--s-ing)', tipo: 'Ingreso' })}
-        ${fila('Gastos fijos', 'fijos', { color: 'var(--s-fijos)', tipo: 'Gastos Fijos', pct: true })}
-        ${fila('Gastos variables', 'variables', { color: 'var(--s-var)', tipo: 'Gastos Variables', pct: true })}
-        ${fila('Total gastado', 'gastado', { cls: 'strong', pct: true })}
-        ${fila('Ahorros', 'ahorros', { color: 'var(--s-aho)', tipo: 'Ahorros', pct: true, signed: true })}
-        ${hasPrest ? fila('Pagos de préstamos', 'prestamos', { color: 'var(--s-deu)', tipo: 'Deudas', pct: true }) : ''}
-        ${hayAho ? fila('Tomaste de tus ahorros', 'prestadoMes', { cls: 'sub', nota: 'Préstamo: ya está en Ahorros' }) + fila('Devolviste a tus ahorros', 'devueltoMes', { cls: 'sub', nota: 'Ya está en Ahorros' }) : ''}
-        ${fila('Balance del mes', 'balance', { cls: 'strong', signed: true })}
-        ${fila('En tu cuenta débito', 'enDebito', { cls: 'strong', signed: true })}
-        ${fila('Debes en la TC', 'debeTC', {})}
-        ${fila('Libre después de pagar la TC', 'libre', { cls: 'total', signed: true, nota: 'Débito − TC' })}
-        ${CURS.some(c => R[c].debeAhorros > 0.005) ? fila('Aparte: le debes a tus ahorros', 'debeAhorros', { nota: 'Se devuelve con tu plan' }) : ''}
-      </tbody></table></div>
-      <div class="note" style="padding-inline:8px">Balance = ingresos − gastos − ahorros${hasPrest ? ' − préstamos' : ''}. Ingresos sin reembolsos ni retiros de ahorro; ahorros = aportes − retiros. Toca una fila con › para ver sus movimientos.</div>`;
     return `<div class="heros" id="heros">${heroes}</div>
       <div class="dots">${CURS.map(c => `<button type="button" data-herogo="${c}" aria-label="Ver ${c}" aria-current="${S.cur === c}"></button>`).join('')}</div>
       ${total ? resumenMes : ''}
@@ -1261,7 +1238,6 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
       ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? seccionPrestamos(R) : ''}
       <div class="accs">
-      ${total ? acc('cifras', 'Cifras del resumen', 'COP y USD', tablaResumen) : ''}
       ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? '' : seccionPrestamos(R)}
       ${acc('analizar', 'Para analizar', 'Promedios, hábitos y comparación', analisisMes(R, S.cur, cmpRows, delta))}
       ${acc('desglose', 'Desglose por categoría', 'COP y USD', `<div class="row between" style="padding-inline:8px"><span class="note">${S.showZeros ? 'Todas las categorías' : 'Solo las que tienen movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
