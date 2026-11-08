@@ -325,6 +325,12 @@ details.acc .actions, .loan .actions { flex-wrap: wrap; }
 .seg.otro, .sw.otro { background: color-mix(in oklab, var(--c) 35%, var(--surface)); }
 .sw { display: inline-block; width: 14px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
 .rb-meta .medios { color: var(--ink-2); }
+.an-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 4px 6px; }
+.an-t { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+.an-t span { font-size: 12.5px; color: var(--ink-2); } .an-t b { font-family: var(--display); font-size: 18px; overflow-wrap: anywhere; }
+.an-t small { font-size: 11.5px; color: var(--muted); } .an-t.mal b { color: var(--neg); } .an-t.bien b { color: var(--pos); }
+.an-sec { display: grid; gap: 4px; padding: 6px; } .an-sec > b { font-family: var(--display); font-weight: 500; font-size: 15px; padding: 2px 4px; }
+.an-list { margin: 0; padding: 0 4px 0 22px; display: grid; gap: 6px; font-size: 14px; color: var(--ink-2); } .an-list b { color: var(--ink); }
 .rb-pay { margin-top: 6px; padding-top: 8px; border-top: 1px solid var(--line); display: grid; gap: 0; }
 .rb-pay-h { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 4px 10px; }
 .rb-pay-h span { font-size: 12.5px; color: var(--muted); }
@@ -1135,6 +1141,53 @@ body.locked .period { visibility: hidden; }
       <div class="note">Acumulado al ${esc(fechaCorta(hasta))} (aportes menos retiros). Debajo, lo que entró o salió ${etiqueta}.</div></section>`;
   }
 
+  // «Para analizar»: promedios de los meses anteriores (hasta 6 con gastos en esa moneda) y lo que dicen de tus finanzas.
+  function analisisMes(R, cur, cmpRows, delta) {
+    const P = promedios(S.all, S.year, S.month, cur, S.settings);
+    if (!P.n) return `${curSeg('Moneda del análisis')}<div class="note" style="padding-inline:8px">Aún no hay meses anteriores con gastos en ${cur} para analizar.</div>`;
+    const H = P.meses.map(k => totales(S.all.filter(t => t.mes === k && t.moneda === cur), S.settings));
+    const sum = k => H.reduce((a, r) => a + (r[k] || 0), 0), avg = k => sum(k) / H.length;
+    const r = R[cur], fin = ym(S.year, S.month) + '-' + pad(new Date(S.year, S.month, 0).getDate());
+    const gastoProm = avg('gastado'), recProm = avg('recurrente'), ingProm = avg('ingreso'), extraProm = avg('extraordinario');
+    const tasaProm = sum('ingreso') > 0.005 ? sum('ahorros') / sum('ingreso') : null;
+    const ahorrado = Object.values(ahorrosPorFondo(S.all, cur, fin)).reduce((a, b) => a + b, 0);
+    const colchon = recProm > 0.005 ? ahorrado / recProm : null;
+    const pagos = sum('gastoTC') + sum('gastoTD') + sum('gastoOtro'), pctTC = pagos > 0.005 ? sum('gastoTC') / pagos : 0;
+    const fuentes = {}; H.forEach(h => Object.entries(h.porCat).forEach(([k, v]) => { if (k.startsWith('Ingreso|') && v > 0) fuentes[k.slice(8)] = (fuentes[k.slice(8)] || 0) + v; }));
+    const fuente = Object.entries(fuentes).sort((a, b) => b[1] - a[1])[0], pctFuente = fuente && sum('ingreso') > 0.005 ? fuente[1] / sum('ingreso') : null;
+    const rojos = H.filter(h => h.gastado > h.ingreso + 0.005).length;
+    const top = Object.entries(P.prom).filter(([k, v]) => v > 0.005).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    const enCurso = S.year === now.getFullYear() && S.month === now.getMonth() + 1;
+    const dias = new Date(S.year, S.month, 0).getDate(), hoy = now.getDate();
+    const proy = enCurso ? Math.max(r.fijos, avg('fijos')) + r.variables / Math.max(1, hoy) * dias : r.gastado;
+    const dif = gastoProm > 0.005 ? (proy - gastoProm) / gastoProm : null;
+    const rango = P.n === 1 ? MONTHS[+P.meses[0].slice(5) - 1] : `${MON3[+P.meses[0].slice(5) - 1].toLowerCase()} ${P.meses[0].slice(0, 4)} a ${MON3[+P.meses.at(-1).slice(5) - 1].toLowerCase()} ${P.meses.at(-1).slice(0, 4)}`;
+    // Solo subidas que pesan: al menos 3 % de tu gasto promedio mensual.
+    const subidas = cmpRows.filter(x => x.p > 0.005 && (x.e - x.p) / x.p > 0.1 && x.e - x.p >= 0.03 * gastoProm).sort((a, b) => (b.e - b.p) - (a.e - a.p)).slice(0, 2);
+    const cuanto = x => x.e / x.p >= 2 ? `×${(x.e / x.p).toFixed(1).replace('.', ',')}` : `+${Math.round((x.e - x.p) / x.p * 100)} %`;
+    const tile = (k, v, n, cls = '') => `<div class="an-t ${cls}"><span>${k}</span><b class="num">${v}</b>${n ? `<small>${n}</small>` : ''}</div>`;
+    return `${curSeg('Moneda del análisis')}
+      <div class="an-grid">
+        ${tile('Gastas en promedio al mes', fmt(gastoProm, cur), `Fijos ${fmt(avg('fijos'), cur)} · variables ${fmt(avg('variables'), cur)}`)}
+        ${tile('Un mes normal te cuesta', fmt(recProm, cur), extraProm > 0.005 ? `Sin extraordinarios, que suman en promedio ${fmt(extraProm, cur)} al mes` : 'No has tenido gastos extraordinarios')}
+        ${tile('Te entra en promedio', fmt(ingProm, cur), tasaProm != null ? `Ahorras el ${pct(tasaProm)} de lo que te entra` : 'Sin ingresos en esos meses')}
+        ${tile('Tus ahorros te alcanzan para', colchon != null ? `${colchon >= 10 ? Math.round(colchon) : colchon.toFixed(1).replace('.', ',')} meses` : '—', `De gasto normal, si dejaras de recibir ingresos`, colchon != null && colchon < 3 ? 'mal' : colchon != null && colchon >= 6 ? 'bien' : '')}
+        ${dif != null ? tile(enCurso ? 'A este ritmo, este mes' : 'Este mes, contra tu promedio', enCurso ? fmt(proy, cur) : `${dif > 0 ? '▲' : '▼'} ${Math.abs(Math.round(dif * 100))} %`, enCurso ? `${dif > 0 ? '▲' : '▼'} ${Math.abs(Math.round(dif * 100))} % frente a tu promedio · estimado con ${hoy} de ${dias} días` : `Gastaste ${dif > 0 ? 'más' : 'menos'} que en un mes promedio`, Math.abs(dif) >= 0.1 ? (dif > 0 ? 'mal' : 'bien') : '') : ''}
+      </div>
+      <div class="an-sec"><b>Dónde se va tu plata</b>${top.map(([k, v]) => `<button type="button" class="rb-cat" data-fcat="${esc(k)}" data-scope="month"><span class="rb-top"><span class="rb-name">${esc(k.split('|')[1])}</span><span class="rb-val num">${fmt(v, cur)}<small> /mes</small></span></span><span class="rb-track thin"><i style="width:${(v / top[0][1] * 100).toFixed(1)}%;background:${k.startsWith('Gastos Fijos') ? 'var(--s-fijos)' : 'var(--s-var)'}"></i></span><span class="rb-meta"><span>${pctTxt(v / gastoProm)} de tu gasto</span></span></button>`).join('')}</div>
+      <div class="an-sec"><b>Tus hábitos</b><ul class="an-list">
+        <li>Pagas con <b>tarjeta de crédito</b> el <b>${pctTxt(pctTC)}</b> de tus gastos.</li>
+        ${fuente ? `<li>El <b>${pctTxt(pctFuente)}</b> de lo que te entra viene de <b>${esc(fuente[0])}</b>${pctFuente >= 0.6 ? ': dependes mucho de esa fuente' : ''}.</li>` : ''}
+        <li>${rojos ? `En <b>${rojos} de ${P.n}</b> meses gastaste más de lo que te entró.` : `En los ${P.n} meses analizados te entró más de lo que gastaste.`}</li>
+        ${subidas.length ? `<li>Este mes vas por encima de lo normal en ${subidas.map(x => `<b>${esc(x.x.split('|')[1])}</b> (${cuanto(x)})`).join(' y ')}.</li>` : ''}
+      </ul></div>
+      <div class="an-sec"><b>Este mes contra tu promedio, por categoría</b>
+        <div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
+          ${cmpRows.map(x => `<tr data-fcat="${esc(x.x)}" data-scope="month"><td>${esc(x.x.split('|')[1])}</td><td>${fmt(x.e, cur)}</td><td>${fmt(x.p, cur)}</td>${delta(x)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
+        </tbody></table></div></div>
+      <div class="note" style="padding-inline:8px">Promedios de ${rango} (${P.n} mes${P.n > 1 ? 'es' : ''} con gastos en ${cur}).${enCurso ? ` ${MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1)} todavía no termina, así que en la tabla lo normal es que vayas por debajo.` : ''}</div>`;
+  }
+
   function viewMes() {
     const k = ym(S.year, S.month);
     const R = Object.fromEntries(CURS.map(c => [c, mensual(S.all, S.year, S.month, c, S.settings, S.saldos)]));
@@ -1171,7 +1224,6 @@ body.locked .period { visibility: hidden; }
       const d = (r.e - r.p) / r.p; const up = d > 0.1, down = d < -0.1;
       return `<td class="${up ? 'neg' : down ? 'good' : 'zero'}">${up ? '▲ ' : down ? '▼ ' : ''}${d > 0 ? '+' : ''}${Math.round(d * 100)} %</td>`;
     };
-    const subidas = cmpRows.filter(r => r.p > 0.005 && (r.e - r.p) / r.p > 0.1).length;
     // Resumen del mes, siempre visible: cada cifra con su % del ingreso; toca una fila para ver esos movimientos.
     const pctIng = (v, c) => R[c].ingreso > 0.005 && Math.abs(v) > 0.005 ? `<small>${Math.round(v / R[c].ingreso * 100)} % del ingreso</small>` : '';
     const fila = (label, key, opts = {}) => `<tr class="${opts.cls || ''}" ${opts.tipo ? `data-gotipo="${opts.tipo}"` : ''}><td>${opts.color ? `<span class="dot" style="background:${opts.color};display:inline-block;margin-right:7px"></span>` : ''}${label}${opts.tipo ? ' <span class="go">›</span>' : ''}${opts.nota ? `<small>${opts.nota}</small>` : ''}</td>${CURS.map(c => {
@@ -1211,15 +1263,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       <div class="accs">
       ${total ? acc('cifras', 'Cifras del resumen', 'COP y USD', tablaResumen) : ''}
       ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? '' : seccionPrestamos(R)}
-      ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
-          ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
-        </tbody></table></div><div class="note" style="padding-inline:8px">Promedio mensual en ${S.cur} de ${P.n === 1 ? MONTHS[+P.meses[0].slice(5) - 1] : `${MON3[+P.meses[0].slice(5) - 1].toLowerCase()} ${P.meses[0].slice(0, 4)} a ${MON3[+P.meses.at(-1).slice(5) - 1].toLowerCase()} ${P.meses.at(-1).slice(0, 4)}`} (${P.n} mes${P.n > 1 ? 'es' : ''} con gastos en ${S.cur}). ▲ gastaste más de lo normal, ▼ menos.${S.year === now.getFullYear() && S.month === now.getMonth() + 1 ? ` <b>${MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1)} todavía no termina</b> (día ${now.getDate()} de ${new Date(S.year, S.month, 0).getDate()}): lo normal es que aún vayas por debajo.` : ''}</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
-      ${acc('analizar', 'Para analizar', 'Recurrente, extraordinario, ahorro', `        <div class="card tight scrollx"><table class="tbl num">${head3('Para analizar')}<tbody>
-          <tr><td>Gasto recurrente<small>Lo que cuesta un mes normal</small></td>${CURS.map(c => cell(R[c].recurrente, c)).join('')}</tr>
-          <tr><td>Gasto extraordinario<small>Viajes, matrícula y lo que marques</small></td>${CURS.map(c => cell(R[c].extraordinario, c)).join('')}</tr>
-          <tr><td>Tasa de ahorro</td>${CURS.map(c => `<td class="${R[c].tasaAhorro < 0 ? 'neg' : R[c].tasaAhorro == null ? 'zero' : ''}">${pct(R[c].tasaAhorro)}</td>`).join('')}</tr>
-          <tr><td>Reembolsos recibidos<small>Ya descontados de tus gastos</small></td>${CURS.map(c => cell(R[c].reembolsos, c)).join('')}</tr>
-        </tbody></table></div>`)}
+      ${acc('analizar', 'Para analizar', 'Promedios, hábitos y comparación', analisisMes(R, S.cur, cmpRows, delta))}
       ${acc('desglose', 'Desglose por categoría', 'COP y USD', `<div class="row between" style="padding-inline:8px"><span class="note">${S.showZeros ? 'Todas las categorías' : 'Solo las que tienen movimientos'}</span><button type="button" class="chip" data-zeros="1">${S.showZeros ? 'Ocultar en cero' : 'Ver todas'}</button></div>
         ${desglose('Ingreso', R, 'ingreso', 'month')}${desglose('Gastos Fijos', R, 'fijos', 'month', { budgets: true })}${desglose('Gastos Variables', R, 'variables', 'month', { budgets: true })}${desglose('Ahorros', R, 'ahorros', 'month')}${hasPrest ? desglose('Deudas', R, 'prestamos', 'month') : ''}`)}
       </div>`;
