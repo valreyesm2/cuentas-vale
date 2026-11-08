@@ -422,9 +422,12 @@ body.locked .period { visibility: hidden; }
   const tipoGasto = (cat, cfg) => (cfg?.categorias?.['Gastos Fijos'] || []).includes(cat) ? 'Gastos Fijos' : 'Gastos Variables';
   const tipoRe = (t, cfg) => t.reembolsaTipo || tipoGasto(t.reembolsaA, cfg);
   const isExtra = (t, cfg) => GASTO.has(t.tipo) && t.categoria !== PAGO_TC && (t.extra === true || (cfg?.extraCats || []).includes(t.categoria));
-  const isCompraTC = t => t.medio === CREDITO && t.tipo !== 'Deudas';
+  const isCompraTC = t => t.medio === CREDITO && t.tipo !== 'Deudas' && t.tipo !== 'Ingreso';
+  const esAbonoIngresoTC = t => t.medio === CREDITO && t.tipo === 'Ingreso' && !isLegacyRetiro(t); // p. ej. intereses acreditados a la TC
   // Un «Pago a TC» con impuesto: a la tarjeta solo se abona el monto sin impuesto; el impuesto es un gasto aparte.
   const IMP_PAGO_TC = 'Impuesto del pago a TC';
+  const PRESTAMO_TERCEROS = 'Préstamo a terceros', INTERESES = 'Intereses';
+  const CATS_APP = { 'Gastos Variables': [PRESTAMO_TERCEROS], 'Ingreso': [INTERESES] };
   const esPagoTC = t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC;
   const impDe = t => impVal(t) === 'Si' ? Math.max(0, Number(t.impuestoValor) || 0) : 0;
   const abonoTC = t => (Number(t.monto) || 0) - impDe(t);
@@ -437,7 +440,7 @@ body.locked .period { visibility: hidden; }
     let reembolsos = 0;
     for (const t of L) {
       const v = Number(t.monto) || 0;
-      if (isLegacyRetiro(t)) { add('Ahorros|' + RETIRO, -v); continue; }
+      if (isLegacyRetiro(t)) { add('Ahorros|' + (fondoDe(t) || RETIRO), -v); continue; }
       if (isReembolso(t)) { reembolsos += v; if (t.reembolsaA) add(tipoRe(t, cfg) + '|' + t.reembolsaA, -v); else add('Gastos Variables|Otros reembolsos', -v); continue; }
       if (esPagoTC(t)) { add('Gastos Fijos|' + PAGO_TC, abonoTC(t)); if (impDe(t)) add('Gastos Fijos|' + IMP_PAGO_TC, impDe(t)); continue; }
       add(t.tipo + '|' + t.categoria, v);
@@ -471,7 +474,7 @@ body.locked .period { visibility: hidden; }
   function flujoDebito(L, cur, cfg) {
     const deb = cfg?.debito?.[cur] || {};
     const ahorrosNetos = sumIf(L, t => t.tipo === 'Ahorros') - sumIf(L, isLegacyRetiro);
-    return sumIf(L, t => t.tipo === 'Ingreso' && !isLegacyRetiro(t))
+    return sumIf(L, t => t.tipo === 'Ingreso' && !isLegacyRetiro(t) && t.medio !== CREDITO)
       - sumIf(L, t => t.medio === DEBITO && t.tipo !== 'Ingreso' && t.tipo !== 'Ahorros')
       - (deb.restaAhorros ? ahorrosNetos : 0);
   }
@@ -486,22 +489,40 @@ body.locked .period { visibility: hidden; }
   // Saldo pendiente en la tarjeta de crédito al cierre de un mes: compras con TC − pagos a TC acumulados.
   function saldoTC(all, cur, mesKey, cfg) {
     const L = all.filter(t => t.moneda === cur && t.mes && t.mes <= mesKey);
-    return (Number(cfg?.tcInicial?.[cur]) || 0) + sumIf(L, isCompraTC) - L.filter(esPagoTC).reduce((a, t) => a + abonoTC(t), 0);
+    return (Number(cfg?.tcInicial?.[cur]) || 0) + sumIf(L, isCompraTC) - L.filter(esPagoTC).reduce((a, t) => a + abonoTC(t), 0) - sumIf(L, esAbonoIngresoTC);
   }
 
   // Préstamos de tus ahorros: lo que sacaste de tus ahorros y vas a devolver, menos lo que ya devolviste.
   const esPrestamo = t => /^Préstamo/.test(t.prestamo || '');
   const esDevolucion = t => t.prestamo === 'Devolución';
   const fondoDe = t => (String(t.prestamo || '').split(':')[1] || '').trim();
+  // Préstamos de tus ahorros. «tomado/devuelto» cuentan solo desde la última vez que quedaste al día:
+  // si devolviste todo, el mes siguiente arranca en cero; si quedó algo pendiente, se sigue mostrando.
   function prestamosAhorros(all, cur, hastaMes) {
-    const L = all.filter(t => t.moneda === cur && t.mes && (!hastaMes || t.mes <= hastaMes));
     const abs = t => Math.abs(Number(t.monto) || 0);
-    const tomado = L.filter(esPrestamo).reduce((a, t) => a + abs(t), 0);
-    const devuelto = L.filter(esDevolucion).reduce((a, t) => a + abs(t), 0);
+    const L = all.filter(t => t.moneda === cur && t.mes && (!hastaMes || t.mes <= hastaMes) && (esPrestamo(t) || esDevolucion(t)))
+      .sort((a, b) => (a.fecha + (a.creado || '')).localeCompare(b.fecha + (b.creado || '')));
+    let saldo = 0, tomado = 0, devuelto = 0;
     const porFondo = {};
-    L.filter(esPrestamo).forEach(t => { const f = fondoDe(t) || 'Sin fondo'; porFondo[f] = (porFondo[f] || 0) + abs(t); });
-    L.filter(esDevolucion).forEach(t => { const f = t.categoria || 'Sin fondo'; porFondo[f] = (porFondo[f] || 0) - abs(t); });
-    return { tomado, devuelto, deuda: tomado - devuelto, porFondo };
+    for (const t of L) {
+      if (saldo <= 0.005) { tomado = 0; devuelto = 0; for (const k in porFondo) delete porFondo[k]; } // empieza un ciclo nuevo
+      if (esPrestamo(t)) { saldo += abs(t); tomado += abs(t); const f = fondoDe(t) || 'Sin fondo'; porFondo[f] = (porFondo[f] || 0) + abs(t); }
+      else { saldo -= abs(t); devuelto += abs(t); const f = t.categoria || 'Sin fondo'; porFondo[f] = (porFondo[f] || 0) - abs(t); }
+    }
+    return { tomado, devuelto, deuda: saldo, porFondo };
+  }
+
+
+  // Saldo acumulado de cada fondo de ahorro hasta una fecha: aportes − retiros (los retiros sin fondo van aparte).
+  function ahorrosPorFondo(all, cur, hasta) {
+    const f = {};
+    for (const t of all) {
+      if (t.moneda !== cur || !t.fecha || t.fecha > hasta || incompleto(t)) continue;
+      const v = Number(t.monto) || 0;
+      if (t.tipo === 'Ahorros') f[t.categoria] = (f[t.categoria] || 0) + v;
+      else if (isLegacyRetiro(t)) { const k = fondoDe(t) || 'Retiros sin fondo asignado'; f[k] = (f[k] || 0) - v; }
+    }
+    return f;
   }
 
   function mensual(all, y, m, cur, cfg, saldos) {
@@ -729,7 +750,9 @@ body.locked .period { visibility: hidden; }
     const colaIds = new Set(S.cola.map(t => t.id));
     S.all = (d.movimientos || []).filter(t => !colaIds.has(t.id)).map(withDerived).concat(S.cola.map(t => withDerived({ ...t, _sinGuardar: true })));
     S.settings = mergeSettings(d.ajustes || {});
-    if (d.categorias && Object.values(d.categorias).some(l => l.length)) S.settings.categorias = d.categorias;
+    if (d.categorias && Object.values(d.categorias).some(l => l.length)) S.settings.categorias = structuredClone(d.categorias);
+    // Categorías que agrega la app aunque no estén en la pestaña Setup de la hoja.
+    for (const [tp, lista] of Object.entries(CATS_APP)) { const c = S.settings.categorias[tp] ||= []; lista.forEach(x => { if (!c.includes(x)) c.push(x); }); }
     S.categorias = d.categorias || null;
     S.versionGs = Number(d.version) || 0;
     S.saldos = d.saldos || {};
@@ -966,7 +989,7 @@ body.locked .period { visibility: hidden; }
   function totalRango(a, b, cur) {
     const r = totales(S.all.filter(t => t.moneda === cur && enRango(t, a, b)), S.settings);
     const hastaL = S.all.filter(t => t.moneda === cur && t.fecha && t.fecha <= b && !incompleto(t));
-    r.saldoTC = (Number(S.settings?.tcInicial?.[cur]) || 0) + sumIf(hastaL, isCompraTC) - hastaL.filter(esPagoTC).reduce((a, t) => a + abonoTC(t), 0);
+    r.saldoTC = (Number(S.settings?.tcInicial?.[cur]) || 0) + sumIf(hastaL, isCompraTC) - hastaL.filter(esPagoTC).reduce((a, t) => a + abonoTC(t), 0) - sumIf(hastaL, esAbonoIngresoTC);
     r.ahorrosAcum = sumIf(hastaL, t => t.tipo === 'Ahorros') - sumIf(hastaL, isLegacyRetiro);
     const abs = t => Math.abs(Number(t.monto) || 0);
     r.debesAhorros = hastaL.filter(esPrestamo).reduce((x, t) => x + abs(t), 0) - hastaL.filter(esDevolucion).reduce((x, t) => x + abs(t), 0);
@@ -1012,8 +1035,9 @@ body.locked .period { visibility: hidden; }
         <div class="pend-btns"><button type="button" class="chip" data-clasif="prestamo" data-id="${esc(t.id)}">Es préstamo</button><button type="button" class="chip" data-clasif="gasto" data-id="${esc(t.id)}">Lo gasté</button></div></div>`).join('')}</div>`;
   }
 
+  const prestamoActivo = r => r.debesAhorros > 0.005 || r.prestadoMes > 0.005 || r.devueltoMes > 0.005;
   function seccionPrestamos(R) {
-    const curs = CURS.filter(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005);
+    const curs = CURS.filter(c => prestamoActivo(R[c]));
     const botones = c => `<div class="actions"><button type="button" class="btn" data-nuevo="prestamo" data-moneda="${c}">Tomar de mis ahorros</button><button type="button" class="btn primary" data-nuevo="devolucion" data-moneda="${c}">Devolver a mis ahorros</button></div>`;
     if (!curs.length) return (sinClasificar().length ? `<section class="block"><h2>Préstamos de tus ahorros</h2><div class="loans">${retirosPendientes()}</div></section>` : '') + acc('prestamos', 'Préstamos de tus ahorros', 'Sin préstamos', `<div class="note" style="padding-inline:8px">Si sacas plata de tus ahorros para tener flujo y la vas a reponer, anótala como préstamo. Aquí verás cuánto le debes a tus ahorros y un plan para devolverlo.</div>${botones(S.cur)}`);
     const plan = S.settings.planAhorros || {};
@@ -1025,8 +1049,8 @@ body.locked .period { visibility: hidden; }
       return `<div class="loan">
         <div class="row between"><span class="eyebrow">${c}</span>${r.debesAhorros > 0.005 ? '' : '<span class="pill">Al día</span>'}</div>
         <div class="loan-amt num ${r.debesAhorros > 0.005 ? '' : 'ok'}">${r.debesAhorros > 0.005 ? `Le debes ${fmt(r.debesAhorros, c)}` : r.debesAhorros < -0.005 ? `Devolviste ${fmt(-r.debesAhorros, c)} de más` : 'No le debes nada a tus ahorros'}</div>
-        <div class="bar" title="Devuelto"><i style="width:${(avance * 100).toFixed(1)}%;background:var(--s-ing)"></i></div>
-        <div class="note">Has devuelto ${fmt(r.devueltoAhorros, c)} de ${fmt(r.tomadoAhorros, c)} (${Math.round(avance * 100)} %)${fondos.length ? ` · ${fondos.map(([f, v]) => `${esc(f)}: ${fmt(v, c)}`).join(' · ')}` : ''}</div>
+        ${r.debesAhorros > 0.005 ? `<div class="bar" title="Devuelto"><i style="width:${(avance * 100).toFixed(1)}%;background:var(--s-ing)"></i></div>
+        <div class="note">De este préstamo has devuelto ${fmt(r.devueltoAhorros, c)} de ${fmt(r.tomadoAhorros, c)} (${Math.round(avance * 100)} %)${fondos.length ? ` · ${fondos.map(([f, v]) => `${esc(f)}: ${fmt(v, c)}`).join(' · ')}` : ''}</div>` : ''}
         ${r.prestadoMes || r.devueltoMes ? `<div class="note">En ${MONTHS[S.month - 1]}: tomaste ${fmt(r.prestadoMes, c)} y devolviste ${fmt(r.devueltoMes, c)}.</div>` : ''}
         ${r.debesAhorros > 0.005 ? `<div class="plan"><label for="plan-${c}">Devolverlo en</label>
           <select id="plan-${c}" class="inp" data-plan="${c}">${[1, 2, 3, 4, 6, 9, 12, 18, 24].map(n => `<option value="${n}" ${n === meses ? 'selected' : ''}>${n} mes${n > 1 ? 'es' : ''}</option>`).join('')}</select>
@@ -1091,6 +1115,19 @@ body.locked .period { visibility: hidden; }
       ${r.debeAhorros > 0.005 ? `<div class="aho full"><span>Aparte: le debes a tus ahorros</span><b class="num">${fmt(r.debeAhorros, c)}</b><small>Préstamos − devoluciones · tu plan: ${fmt(r.cuotaAhorros, c)} al mes. Lo devuelves con tus ingresos; no se resta de lo libre.</small></div>` : ''}
     </div>`;
     return `<div class="rbars">${filas}${pagado}${totales}</div>`;
+  }
+
+  function seccionFondos(hasta, titulo) {
+    const F = Object.fromEntries(CURS.map(c => [c, ahorrosPorFondo(S.all, c, hasta)]));
+    const fondos = [...new Set([...cats('Ahorros'), ...CURS.flatMap(c => Object.keys(F[c]))])].filter(f => CURS.some(c => Math.abs(F[c][f] || 0) > 0.005));
+    if (!fondos.length) return '';
+    const tot = Object.fromEntries(CURS.map(c => [c, Object.values(F[c]).reduce((a, b) => a + b, 0)]));
+    return `<section class="block"><h2>${dotH('var(--s-aho)')}${titulo}</h2>
+      <div class="card tight scrollx"><table class="tbl num">${head3('Fondo')}<tbody>
+        ${fondos.map(f => `<tr><td>${esc(f)}${f === 'Retiros sin fondo asignado' ? '<small>Lo que sacaste sin decir de qué fondo</small>' : ''}</td>${CURS.map(c => cell(F[c][f] || 0, c, true)).join('')}</tr>`).join('')}
+        <tr class="total"><td>Total ahorrado</td>${CURS.map(c => cell(tot[c], c, true)).join('')}</tr>
+      </tbody></table></div>
+      <div class="note">Acumulado hasta el ${esc(fechaCorta(hasta))}: aportes menos retiros de cada fondo.</div></section>`;
   }
 
   function viewMes() {
@@ -1164,11 +1201,12 @@ body.locked .period { visibility: hidden; }
 ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:block"><b>Actualiza el programa de Google.</b> El que tienes pegado en tu hoja es una versión anterior: algunas cosas nuevas (como el valor del impuesto) no se guardan. Pega el archivo <b>Codigo.gs</b> de Descargas en Extensiones → Apps Script y haz Implementar → Gestionar implementaciones → ✏️ → Nueva versión.</div></section>` : ''}${S.cola.length ? `<section class="block"><button type="button" class="notice warn" data-reintentar="1"><span>${S.cola.length} movimiento${S.cola.length > 1 ? 's' : ''} sin guardar en tu hoja</span><span>Reintentar ›</span></button></section>` : ''}
       ${sinFecha ? `<section class="block"><button type="button" class="notice warn" data-sinfecha="1"><span>${sinFecha} movimiento${sinFecha > 1 ? 's' : ''} de tu hoja ${sinFecha > 1 ? 'están incompletos' : 'está incompleto'} (falta fecha, categoría, monto o moneda) y no se cuenta${sinFecha > 1 ? 'n' : ''}</span><span>Completar ›</span></button></section>` : ''}
       ${pend ? `<section class="block"><button type="button" class="notice warn" data-pending="1"><span>${pend} movimiento${pend > 1 ? 's' : ''} con impuesto pendiente por agregar</span><span>Ver ›</span></button></section>` : ''}
+      ${seccionFondos(ym(S.year, S.month) + '-' + pad(new Date(S.year, S.month, 0).getDate()), 'Tus ahorros por fondo')}
       <section class="block"><div class="sechead"><h2>¿En qué se fue la plata?</h2>${curSeg('Moneda')}</div>${donut(este, S.cur, 'month')}</section>
-      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) || sinClasificar().length ? seccionPrestamos(R) : ''}
+      ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? seccionPrestamos(R) : ''}
       <div class="accs">
       ${total ? acc('cifras', 'Cifras del resumen', 'COP y USD', tablaResumen) : ''}
-      ${CURS.some(c => R[c].tomadoAhorros > 0.005 || R[c].devueltoAhorros > 0.005) || sinClasificar().length ? '' : seccionPrestamos(R)}
+      ${CURS.some(c => prestamoActivo(R[c])) || sinClasificar().length ? '' : seccionPrestamos(R)}
       ${acc('cmp', 'Comparado con tu promedio', P.n ? (subidas ? `${subidas} categoría${subidas > 1 ? 's' : ''} por encima` : 'Todo en lo normal') : '', P.n ? `<div class="card tight scrollx"><table class="tbl num tap"><thead><tr><th>Categoría</th><th>Este mes</th><th>Promedio</th><th>Cambio</th></tr></thead><tbody>
           ${cmpRows.map(r => `<tr data-fcat="${esc(r.x)}" data-scope="month"><td>${esc(r.x.split('|')[1])}</td><td>${fmt(r.e, S.cur)}</td><td>${fmt(r.p, S.cur)}</td>${delta(r)}</tr>`).join('') || '<tr><td colspan="4" class="zero">Sin gastos para comparar</td></tr>'}
         </tbody></table></div><div class="note" style="padding-inline:8px">Promedio mensual en ${S.cur} de ${P.n === 1 ? MONTHS[+P.meses[0].slice(5) - 1] : `${MON3[+P.meses[0].slice(5) - 1].toLowerCase()} ${P.meses[0].slice(0, 4)} a ${MON3[+P.meses.at(-1).slice(5) - 1].toLowerCase()} ${P.meses.at(-1).slice(0, 4)}`} (${P.n} mes${P.n > 1 ? 'es' : ''} con gastos en ${S.cur}). ▲ gastaste más de lo normal, ▼ menos.${S.year === now.getFullYear() && S.month === now.getMonth() + 1 ? ` <b>${MONTHS[S.month - 1][0].toUpperCase() + MONTHS[S.month - 1].slice(1)} todavía no termina</b> (día ${now.getDate()} de ${new Date(S.year, S.month, 0).getDate()}): lo normal es que aún vayas por debajo.` : ''}</div>` : `<div class="note" style="padding-inline:8px">Aún no hay meses anteriores en ${S.cur} para comparar.</div>`)}
@@ -1252,6 +1290,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
           <tr><td>Debes en la TC<small>Al ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(Math.max(0, R[c].saldoTC), c)).join('')}</tr>
           <tr><td>Le debes a tus ahorros<small>Al ${esc(fechaCorta(P.hasta))}</small></td>${CURS.map(c => cell(Math.max(0, R[c].debesAhorros), c)).join('')}</tr>
         </tbody></table></div></section>
+      ${seccionFondos(P.hasta, 'Tus ahorros por fondo')}
       <section class="block"><div class="sechead"><h2>Gráficas en ${cur}</h2>${curSeg('Moneda de las gráficas')}</div>
         <div class="chart"><h3 class="ch">Gastos e ingreso ${P.porMes ? 'mes a mes' : unidad === 'Día' ? 'día a día' : 'semana a semana'}</h3>
           <div class="legend"><span><span class="dot" style="background:var(--s-fijos)"></span>Gastos fijos</span><span><span class="dot" style="background:var(--s-var)"></span>Gastos variables</span><span><span class="sw-line" style="background:var(--s-ing)"></span>Ingreso</span></div>
@@ -1309,7 +1348,8 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       <div class="card">${gastoCats().map(([, ca], i) => `<div class="setrow"><label for="b${i}">${esc(ca)}</label>
         <input class="inp num" id="b${i}" data-budget="${esc(ca)}" inputmode="decimal" placeholder="Sin tope" value="${num(budget[ca])}"></div>`).join('')}</div></section>
       <section class="block"><h2>Categorías</h2>
-        <div class="note">Las categorías salen de la pestaña <strong>Setup</strong> de tu hoja. Para agregar o quitar una, edítala ahí y vuelve a abrir la app.</div></section>
+        <div class="note">Las categorías salen de la pestaña <strong>Setup</strong> de tu hoja. Para agregar o quitar una, edítala ahí y vuelve a abrir la app.</div>
+        <div class="note">La app agrega además <strong>Préstamo a terceros</strong> (gastos variables) e <strong>Intereses</strong> (ingresos). Si quieres que tus pestañas Mensual y Anual de la hoja también las sumen, agrégalas en Setup con el mismo nombre.</div></section>
       <section class="block"><h2>Respaldo</h2>
         <div class="note">Tus datos viven en tu hoja «Presupuesto Mensual Vale 2026». Aquí puedes descargar una copia.</div>
         <div class="actions"><button type="button" class="btn" id="exportCsv">Descargar CSV</button><button type="button" class="btn" id="exportJson">Descargar respaldo</button></div>
@@ -1415,7 +1455,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       root.querySelector('#exField').hidden = !isGasto;
       const ex = root.querySelector('#f-extra'); ex.checked = fixedExtra || st.extra; ex.disabled = fixedExtra;
       root.querySelector('#exHelp').textContent = fixedExtra ? `«${st.categoria}» siempre cuenta como extraordinario (lo cambias en Ajustes).` : 'Márcalo si no se repite cada mes.';
-      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como plata que sacas de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
+      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.medio === CREDITO ? 'Abonado a tu tarjeta de crédito: baja lo que debes en la TC y no entra a tu débito.' : st.tipo === 'Ingreso' && st.categoria === INTERESES ? 'Elige abajo dónde te los abonaron: Tarjeta Débito o Tarjeta de Crédito.' : st.categoria === PRESTAMO_TERCEROS ? 'Plata que le prestas a alguien. Escribe en Detalles a quién.' : st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como plata que sacas de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
       root.querySelector('#curPick').innerHTML = CURS.map(c => `<button type="button" data-st-cur="${c}" aria-pressed="${st.moneda === c}">${c}</button>`).join('');
       root.querySelector('#medioPick').innerHTML = medios.map(m => `<button type="button" class="chip" data-st-medio="${esc(m)}" aria-pressed="${st.medio === m}">${esc(m === 'NA' ? 'No aplica' : m)}</button>`).join('');
       root.querySelector('#impPick').innerHTML = IMP.map(([v, l]) => `<button type="button" data-st-imp="${v}" aria-pressed="${st.impuesto === v}">${l}</button>`).join('');
