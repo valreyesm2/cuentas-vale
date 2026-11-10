@@ -448,7 +448,7 @@ body.locked .period { visibility: hidden; }
     for (const t of L) {
       const v = Number(t.monto) || 0;
       // Préstamo de tus ahorros y su devolución: plata que va y vuelve entre tus ahorros y tu cuenta, no es ahorro nuevo ni retiro.
-      if (esPrestamo(t) && isLegacyRetiro(t)) { prestadoAh += Math.abs(v); continue; }
+      if (esPrestamo(t) && (isLegacyRetiro(t) || t.tipo === 'Ahorros')) { prestadoAh += Math.abs(v); continue; }
       if (esDevolucion(t) && t.tipo === 'Ahorros') { devueltoAh += Math.abs(v); continue; }
       if (isLegacyRetiro(t)) { add('Ahorros|' + (fondoDe(t) || RETIRO), -v); continue; }
       if (isReembolso(t)) { reembolsos += v; if (t.reembolsaA) add(tipoRe(t, cfg) + '|' + t.reembolsaA, -v); else add('Gastos Variables|Otros reembolsos', -v); continue; }
@@ -507,7 +507,7 @@ body.locked .period { visibility: hidden; }
   // Préstamos de tus ahorros: lo que sacaste de tus ahorros y vas a devolver, menos lo que ya devolviste.
   const esPrestamo = t => /^Préstamo/.test(t.prestamo || '');
   const esDevolucion = t => t.prestamo === 'Devolución';
-  const fondoDe = t => (String(t.prestamo || '').split(':')[1] || '').trim();
+  const fondoDe = t => t.tipo === 'Ahorros' ? t.categoria : (String(t.prestamo || '').split(':')[1] || '').trim();
   // Préstamos de tus ahorros. «tomado/devuelto» cuentan solo desde la última vez que quedaste al día:
   // si devolviste todo, el mes siguiente arranca en cero; si quedó algo pendiente, se sigue mostrando.
   function prestamosAhorros(all, cur, hastaMes) {
@@ -1471,6 +1471,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     };
     if (st.prestamo && !st.fondo) st.fondo = fondoPrincipal(st.moneda);
     // Atajos desde «Préstamos de tus ahorros»
+    if (preset === 'marcarPrestamo') Object.assign(st, { prestamo: true, fondo: st.fondo || fondoPrincipal(st.moneda) });
     if (preset === 'gasto') Object.assign(st, { tipo: 'Gastos Variables', categoria: '' });
     if (preset === 'ingreso') Object.assign(st, { tipo: 'Ingreso', categoria: '' });
     if (preset === 'ahorro') Object.assign(st, { tipo: 'Ahorros', categoria: '' });
@@ -1648,7 +1649,8 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     }
     if (d.clasif) {
       const t = S.all.find(x => x.id === d.id); if (!t) return;
-      if (d.clasif === 'prestamo') { guardarMov({ ...t, prestamo: 'Préstamo' }); toast(`Marcado como préstamo: ${fmt(Math.abs(t.monto), t.moneda)}`); }
+      // Un retiro negativo de Ahorros ya dice de qué fondo salió; un «Gasto de Ahorros» abre el formulario para elegir el fondo.
+      if (d.clasif === 'prestamo') { if (t.tipo === 'Ahorros') { guardarMov({ ...t, prestamo: 'Préstamo' }); toast(`Marcado como préstamo de ${t.categoria}: ${fmt(Math.abs(t.monto), t.moneda)}`); } else openSheet(t, 'marcarPrestamo'); }
       else { const next = structuredClone(S.settings); next.retirosRevisados = [...new Set([...(next.retirosRevisados || []), t.id])]; saveSettings(next); toast('Listo, no te vuelvo a preguntar por ese retiro'); }
       return;
     }
