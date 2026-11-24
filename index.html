@@ -434,7 +434,10 @@ body.locked .period { visibility: hidden; }
   // Un «Pago a TC» con impuesto: a la tarjeta solo se abona el monto sin impuesto; el impuesto es un gasto aparte.
   const IMP_PAGO_TC = 'Impuesto del pago a TC';
   const PRESTAMO_TERCEROS = 'Préstamo a terceros', INTERESES = 'Intereses';
-  const CATS_APP = { 'Gastos Variables': [PRESTAMO_TERCEROS], 'Ingreso': [INTERESES] };
+  // Plata tuya que pasa de una cuenta a otra (p. ej. de COP a tu cuenta en USD): no es gasto ni ingreso, solo mueve caja.
+  const TRASLADO = 'Traslado entre mis cuentas';
+  const esTraslado = t => t.categoria === TRASLADO && (t.tipo === 'Ingreso' || GASTO.has(t.tipo));
+  const CATS_APP = { 'Gastos Variables': [PRESTAMO_TERCEROS, TRASLADO], 'Ingreso': [INTERESES, TRASLADO] };
   const esPagoTC = t => t.tipo === 'Gastos Fijos' && t.categoria === PAGO_TC;
   const impDe = t => impVal(t) === 'Si' ? Math.max(0, Number(t.impuestoValor) || 0) : 0;
   const abonoTC = t => (Number(t.monto) || 0) - impDe(t);
@@ -444,12 +447,14 @@ body.locked .period { visibility: hidden; }
   function totales(L, cfg) {
     const porCat = {};
     const add = (k, v) => { porCat[k] = (porCat[k] || 0) + v; };
-    let reembolsos = 0, prestadoAh = 0, devueltoAh = 0;
+    let reembolsos = 0, prestadoAh = 0, devueltoAh = 0, trasladoSale = 0, trasladoEntra = 0;
     for (const t of L) {
       const v = Number(t.monto) || 0;
-      // Préstamo de tus ahorros y su devolución: plata que va y vuelve entre tus ahorros y tu cuenta, no es ahorro nuevo ni retiro.
-      if (esPrestamo(t) && (isLegacyRetiro(t) || t.tipo === 'Ahorros')) { prestadoAh += Math.abs(v); continue; }
-      if (esDevolucion(t) && t.tipo === 'Ahorros') { devueltoAh += Math.abs(v); continue; }
+      if (esTraslado(t)) { if (t.tipo === 'Ingreso') trasladoEntra += v; else trasladoSale += v; continue; }
+      // El ahorro del mes es neto: lo que sacas de tus ahorros (préstamo o retiro) resta y lo que devuelves suma.
+      // prestadoAh/devueltoAh solo sirven para explicarlo.
+      if (esPrestamo(t) && (isLegacyRetiro(t) || t.tipo === 'Ahorros')) prestadoAh += Math.abs(v);
+      if (esDevolucion(t) && t.tipo === 'Ahorros') devueltoAh += Math.abs(v);
       if (isLegacyRetiro(t)) { add('Ahorros|' + (fondoDe(t) || RETIRO), -v); continue; }
       if (isReembolso(t)) { reembolsos += v; if (t.reembolsaA) add(tipoRe(t, cfg) + '|' + t.reembolsaA, -v); else add('Gastos Variables|Otros reembolsos', -v); continue; }
       if (esPagoTC(t)) { add('Gastos Fijos|' + PAGO_TC, abonoTC(t)); if (impDe(t)) add('Gastos Fijos|' + IMP_PAGO_TC, impDe(t)); continue; }
@@ -467,15 +472,15 @@ body.locked .period { visibility: hidden; }
     // Con qué pagaste los gastos: TC (tarjeta de crédito), TD (tarjeta débito) u otro medio.
     const medioDe = t => t.medio === CREDITO ? 'TC' : t.medio === DEBITO ? 'TD' : 'otro';
     const porMedio = { 'Gastos Fijos': { TC: 0, TD: 0, otro: 0 }, 'Gastos Variables': { TC: 0, TD: 0, otro: 0 } };
-    for (const t of L) if (GASTO.has(t.tipo)) porMedio[t.tipo][medioDe(t)] += t.categoria === PAGO_TC ? impDe(t) : Number(t.monto) || 0;
+    for (const t of L) if (GASTO.has(t.tipo) && !esTraslado(t)) porMedio[t.tipo][medioDe(t)] += t.categoria === PAGO_TC ? impDe(t) : Number(t.monto) || 0;
     const medioTotal = k => porMedio['Gastos Fijos'][k] + porMedio['Gastos Variables'][k];
     return {
       porMedio, gastoTC: medioTotal('TC'), gastoTD: medioTotal('TD'), gastoOtro: medioTotal('otro'),
       n: L.length, porCat, ingreso, reembolsos, pagoTC, fijos, variables, ahorros, prestamos, gastado,
-      prestadoAh, devueltoAh, prestamoAh: prestadoAh - devueltoAh,
+      prestadoAh, devueltoAh, prestamoAh: prestadoAh - devueltoAh, trasladoSale, trasladoEntra, traslado: trasladoEntra - trasladoSale,
       extraordinario, recurrente: gastado - extraordinario,
       // Lo que sacaste prestado de tus ahorros entra a tu flujo; lo que devuelves sale. Mismo resultado de siempre, pero sin mezclarlo con el ahorro.
-      balance: ingreso - (fijos + variables + ahorros + prestamos) + (prestadoAh - devueltoAh),
+      balance: ingreso - (fijos + variables + ahorros + prestamos) + (trasladoEntra - trasladoSale),
       tasaAhorro: ingreso > 0 ? ahorros / ingreso : null,
       comprasTC: sumIf(L, isCompraTC),
       pendientes: L.filter(t => impVal(t) === 'No').length,
@@ -599,7 +604,7 @@ body.locked .period { visibility: hidden; }
     // empezaste a pagar hace poco no se diluye con los meses en que todavía no existía.
     const primero = {};
     for (const t of all) {
-      if (t.moneda !== cur || !t.mes || !GASTO.has(t.tipo)) continue;
+      if (t.moneda !== cur || !t.mes || !GASTO.has(t.tipo) || esTraslado(t)) continue;
       const k = t.tipo + '|' + t.categoria;
       if (!primero[k] || t.mes < primero[k]) primero[k] = t.mes;
     }
@@ -1101,7 +1106,7 @@ body.locked .period { visibility: hidden; }
       { k: 'variables', tipo: 'Gastos Variables', n: 'Gastos variables', color: 'var(--s-var)' },
       { k: 'ahorros', tipo: 'Ahorros', n: 'Ahorros', color: 'var(--s-aho)' },
       ...(Math.abs(r.prestamos) > 0.005 ? [{ k: 'prestamos', tipo: 'Deudas', n: 'Pagos de préstamos', color: 'var(--s-deu)' }] : []),
-      ...(r.prestadoAh > 0.005 || r.devueltoAh > 0.005 ? [{ k: 'prestamoAh', tipo: 'PrestamoAhorros', n: 'Préstamo de tus ahorros (neto)', color: 'var(--ink-3)' }] : []),
+      ...(r.trasladoSale > 0.005 || r.trasladoEntra > 0.005 ? [{ k: 'traslado', tipo: 'Traslado', n: 'Traslados entre tus cuentas', color: 'var(--ink-3)' }] : []),
     ];
     const max = Math.max(1, ...tipos.map(t => Math.abs(r[t.k])));
     const cambio = t => {
@@ -1116,13 +1121,13 @@ body.locked .period { visibility: hidden; }
       const pm = r.porMedio?.[t.tipo] && (r.porMedio[t.tipo].TC > 0.005 || r.porMedio[t.tipo].otro > 0.005) ? r.porMedio[t.tipo] : null;
       const cats = Object.entries(r.porCat).filter(([k, x]) => k.startsWith(t.tipo + '|') && !k.endsWith('|' + PAGO_TC) && Math.abs(x) > 0.005).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
       const maxCat = Math.max(1, ...cats.map(([, x]) => Math.abs(x)));
-      const pct = t.k !== 'ingreso' && t.k !== 'prestamoAh' && r.ingreso > 0.005 ? `${pctTxt(v / r.ingreso)} del ingreso` : t.k === 'ingreso' && r.traes ? '' : '';
+      const pct = t.k !== 'ingreso' && t.k !== 'traslado' && r.ingreso > 0.005 ? `${pctTxt(v / r.ingreso)} del ingreso` : t.k === 'ingreso' && r.traes ? '' : '';
       return `<div class="rb ${abierto ? 'open' : ''}">
         <button type="button" class="rb-head" data-resabre="${t.tipo}" aria-expanded="${abierto}" ${cats.length ? '' : 'disabled'}>
           <span class="rb-top"><span class="rb-name"><span class="dot" style="background:${t.color}"></span>${t.n}</span><span class="rb-val num ${v < -0.005 ? 'neg' : ''}">${fmt(v, c)}</span></span>
           ${pm ? `<span class="rb-track"><span class="rb-fill" style="width:${(Math.abs(v) / max * 100).toFixed(2)}%">${['TD', 'TC', 'otro'].filter(k => pm[k] > 0.005).map(k => `<i class="seg ${k}" style="flex:${pm[k]};--c:${t.color}"></i>`).join('')}</span></span>`
             : `<span class="rb-track"><i style="width:${(Math.abs(v) / max * 100).toFixed(2)}%;background:${t.color}"></i></span>`}
-          <span class="rb-meta">${pm ? `<span class="medios"><i class="sw TD" style="--c:${t.color}"></i>TD ${fmt(pm.TD, c)} <i class="sw TC" style="--c:${t.color}"></i>TC ${fmt(pm.TC, c)}${pm.otro > 0.005 ? ` · otro ${fmt(pm.otro, c)}` : ''}</span>` : ''}${pct ? `<span>${pct}</span>` : ''}${cambio(t)}${t.k === 'ahorros' && v < -0.005 ? '<span>Sacaste más de lo que ahorraste</span>' : ''}${t.k === 'prestamoAh' ? `<span>Sacaste ${fmt(r.prestadoAh, c)} · devolviste ${fmt(r.devueltoAh, c)}. No cuenta como ahorro ni como gasto.</span>` : ''}${cats.length ? `<span class="rb-more">${abierto ? 'Ocultar' : `Ver ${cats.length} categoría${cats.length > 1 ? 's' : ''}`} <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></span>` : ''}</span>
+          <span class="rb-meta">${pm ? `<span class="medios"><i class="sw TD" style="--c:${t.color}"></i>TD ${fmt(pm.TD, c)} <i class="sw TC" style="--c:${t.color}"></i>TC ${fmt(pm.TC, c)}${pm.otro > 0.005 ? ` · otro ${fmt(pm.otro, c)}` : ''}</span>` : ''}${pct ? `<span>${pct}</span>` : ''}${cambio(t)}${t.k === 'ahorros' && v < -0.005 ? '<span>Sacaste más de lo que ahorraste</span>' : ''}${t.k === 'ahorros' && (r.prestadoAh > 0.005 || r.devueltoAh > 0.005) ? `<span>Neto: ahorro nuevo ${fmt(r.ahorros + r.prestadoAh - r.devueltoAh, c)} − sacaste ${fmt(r.prestadoAh, c)} + devolviste ${fmt(r.devueltoAh, c)}</span>` : ''}${t.k === 'traslado' ? `<span>${r.trasladoSale > 0.005 ? `Salió ${fmt(r.trasladoSale, c)}` : ''}${r.trasladoSale > 0.005 && r.trasladoEntra > 0.005 ? ' · ' : ''}${r.trasladoEntra > 0.005 ? `entró ${fmt(r.trasladoEntra, c)}` : ''}. Plata tuya que cambió de cuenta: no es gasto ni ingreso.</span>` : ''}${cats.length ? `<span class="rb-more">${abierto ? 'Ocultar' : `Ver ${cats.length} categoría${cats.length > 1 ? 's' : ''}`} <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg></span>` : ''}</span>
         </button>
         ${abierto ? `<div class="rb-cats">${cats.map(([k, x]) => `<button type="button" class="rb-cat" data-fcat="${esc(k)}" data-scope="month">
             <span class="rb-top"><span class="rb-name">${esc(k.split('|')[1])}</span><span class="rb-val num">${fmt(x, c)}</span></span>
@@ -1140,7 +1145,7 @@ body.locked .period { visibility: hidden; }
         <span class="rb-meta"><span>${pctTxt(v / totMed)} de lo que gastaste</span><span class="rb-more">Ver movimientos ›</span></span></button>`).join('')}
       ${r.pagoTC > 0.005 ? `<div class="note" style="padding:2px 10px 6px">Además pagaste ${fmt(r.pagoTC, c)} a la tarjeta de crédito (no es un gasto nuevo: abona a lo que ya compraste con TC).</div>` : ''}</div>` : '';
     const totales = `<div class="rb-totals">
-      <div><span>Balance del mes</span><b class="num ${r.balance < -0.005 ? 'neg' : 'pos'}">${fmt(r.balance, c)}</b><small>Ingresos − gastos − ahorros${Math.abs(r.prestamos) > 0.005 ? ' − préstamos' : ''}${Math.abs(r.prestamoAh) > 0.005 ? ` ${r.prestamoAh > 0 ? '+' : '−'} préstamo neto de tus ahorros` : ''} (cuenta las compras con TC)</small></div>
+      <div><span>Balance del mes</span><b class="num ${r.balance < -0.005 ? 'neg' : 'pos'}">${fmt(r.balance, c)}</b><small>Ingresos − gastos − ahorros${Math.abs(r.prestamos) > 0.005 ? ' − préstamos' : ''}${Math.abs(r.traslado) > 0.005 ? ` ${r.traslado > 0 ? '+' : '−'} traslados entre tus cuentas` : ''} (cuenta las compras con TC)</small></div>
       <div><span>En tu cuenta débito</span><b class="num ${r.enDebito < -0.005 ? 'neg' : ''}">${fmt(r.enDebito, c)}</b><small>${Number.isFinite(r.debitoReal) ? 'Saldo real que anotaste' : Math.abs(r.traes) > 0.005 ? `Traes ${fmt(r.traes, c)} de ${antNom} + lo que entró − lo pagado con débito` : 'Lo que entró − lo pagado con débito'}</small></div>
       ${r.debeTC > 0.005 || r.cupo ? `<div class="tc"><span>Debes en la TC</span><b class="num">${fmt(r.debeTC, c)}</b><small>${r.cupo ? `Cupo disponible ${fmt(r.cupoDisponible, c)} de ${fmt(r.cupo, c)}` : 'Compras con TC − pagos'}</small></div>` : ''}
       <div class="main"><span>Libre después de pagar la TC</span><b class="num ${r.libre < -0.005 ? 'neg' : ''}">${fmt(r.libre, c)}</b><small>Débito${r.debeTC > 0.005 ? ' − TC' : ''}</small></div>
@@ -1282,7 +1287,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
     const pendAll = S.all.filter(t => impVal(t) === 'No');
     if (S.fPend) list = (q || S.fCat) ? list.filter(t => impVal(t) === 'No') : pendAll;
     if (S.fPrest) list = S.all.filter(t => esPrestamo(t) || esDevolucion(t));
-    if (S.fMedio) list = S.all.filter(t => t.mes === ym(S.year, S.month) && GASTO.has(t.tipo) && t.categoria !== PAGO_TC && (S.fMedio === 'NA' ? t.medio !== CREDITO && t.medio !== DEBITO : t.medio === S.fMedio));
+    if (S.fMedio) list = S.all.filter(t => t.mes === ym(S.year, S.month) && GASTO.has(t.tipo) && t.categoria !== PAGO_TC && !esTraslado(t) && (S.fMedio === 'NA' ? t.medio !== CREDITO && t.medio !== DEBITO : t.medio === S.fMedio));
     if (S.fCur !== 'all') list = list.filter(t => t.moneda === S.fCur);
     if (S.fType !== 'all') list = list.filter(t => t.tipo === S.fType);
     sortTx(list);
@@ -1505,7 +1510,7 @@ ${gsViejo() ? `<section class="block"><div class="notice warn" style="display:bl
       root.querySelector('#exField').hidden = !isGasto;
       const ex = root.querySelector('#f-extra'); ex.checked = fixedExtra || st.extra; ex.disabled = fixedExtra;
       root.querySelector('#exHelp').textContent = fixedExtra ? `«${st.categoria}» siempre cuenta como extraordinario (lo cambias en Ajustes).` : 'Márcalo si no se repite cada mes.';
-      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.medio === CREDITO ? 'Abonado a tu tarjeta de crédito: baja lo que debes en la TC y no entra a tu débito.' : st.tipo === 'Ingreso' && st.categoria === INTERESES ? 'Elige abajo dónde te los abonaron: Tarjeta Débito o Tarjeta de Crédito.' : st.categoria === PRESTAMO_TERCEROS ? 'Plata que le prestas a alguien. Escribe en Detalles a quién.' : st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como plata que sacas de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
+      root.querySelector('#retHelp').textContent = st.tipo === 'Ingreso' && st.medio === CREDITO ? 'Abonado a tu tarjeta de crédito: baja lo que debes en la TC y no entra a tu débito.' : st.tipo === 'Ingreso' && st.categoria === INTERESES ? 'Elige abajo dónde te los abonaron: Tarjeta Débito o Tarjeta de Crédito.' : st.categoria === PRESTAMO_TERCEROS ? 'Plata que le prestas a alguien. Escribe en Detalles a quién.' : st.categoria === TRASLADO ? 'Plata tuya que pasas de una cuenta a otra (p. ej. a tu cuenta en USD). No cuenta como gasto ni como ingreso.' : st.tipo === 'Ingreso' && st.categoria === GASTO_AHORROS ? 'La app lo cuenta como plata que sacas de tus ahorros, no como ingreso.' : st.categoria === DEUDA_TC ? 'La app ya calcula sola la deuda de la tarjeta; esto solo cuenta en tu hoja.' : '';
       root.querySelector('#curPick').innerHTML = CURS.map(c => `<button type="button" data-st-cur="${c}" aria-pressed="${st.moneda === c}">${c}</button>`).join('');
       root.querySelector('#medioPick').innerHTML = medios.map(m => `<button type="button" class="chip" data-st-medio="${esc(m)}" aria-pressed="${st.medio === m}">${esc(m === 'NA' ? 'No aplica' : m)}</button>`).join('');
       root.querySelector('#impPick').innerHTML = IMP.map(([v, l]) => `<button type="button" data-st-imp="${v}" aria-pressed="${st.impuesto === v}">${l}</button>`).join('');
